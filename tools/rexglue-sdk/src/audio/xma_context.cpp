@@ -128,6 +128,22 @@ bool XmaContext::Work() {
     return true;
   }
 
+  // A new stream starts on a silent output buffer. EA's sound engine (seen in
+  // Need for Speed: Most Wanted, which shares it) kicks a new sound before its
+  // input buffers are set: that pass writes nothing and invalidates the output
+  // (the game needs that, or the sound never starts), and the game then reads
+  // blocks the decoder has not written yet. On a context's first use they are
+  // zero; on a reused one they still held the previous sound, a fragment of it
+  // in front of the new one, whose read pointer stays ahead for the rest.
+  if (!output_cleared_since_clear_ && data.output_buffer_ptr) {
+    output_cleared_since_clear_ = true;
+    if (uint8_t* output = memory()->TranslatePhysical(data.output_buffer_ptr)) {
+      std::memset(output, 0,
+                  std::min<size_t>(size_t(data.output_buffer_block_count) * kOutputBytesPerBlock,
+                                   kOutputMaxSizeBytes));
+    }
+  }
+
   memory::RingBuffer output_rb = PrepareOutputRingBuffer(&data);
 
   // Consume-only context: no input, just drain remaining subframes.
@@ -209,6 +225,7 @@ void XmaContext::ClearLocked(XMA_CONTEXT_DATA* data) {
   current_frame_remaining_subframes_ = 0;
   loop_frame_output_limit_ = 0;
   loop_start_skip_pending_ = false;
+  output_cleared_since_clear_ = false;
   ResetDecoder(av_context_);
 }
 
@@ -227,6 +244,7 @@ void XmaContext::Release() {
   current_frame_remaining_subframes_ = 0;
   loop_frame_output_limit_ = 0;
   loop_start_skip_pending_ = false;
+  output_cleared_since_clear_ = false;
   ResetDecoder(av_context_);
 }
 
