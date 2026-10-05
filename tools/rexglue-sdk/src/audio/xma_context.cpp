@@ -45,6 +45,24 @@ using stream::BitStream;
 const uint32_t XmaContext::kBitsPerPacketHeader;
 const uint32_t XmaContext::kOutputMaxSizeBytes;
 
+namespace {
+
+// A context cleared or released for reuse starts a new stream. The decoder
+// keeps the previous stream's state (the overlap of its last frame, the length
+// of its last block), and PrepareDecoder only reopens it when the rate or the
+// channel count changes, so a new sound at the same format began with the end
+// of the old one mixed in: short effects started with a fragment of whatever
+// the context played before. Flushing makes it start as a freshly opened
+// decoder (the xmaframes flush in wmaprodec.c). The codec opens lazily on the
+// first decode, and flushing one that is not open is invalid.
+void ResetDecoder(AVCodecContext* av_context) {
+  if (av_context && avcodec_is_open(av_context)) {
+    avcodec_flush_buffers(av_context);
+  }
+}
+
+}  // namespace
+
 XmaContext::XmaContext()
     : work_completion_event_(rex::thread::Event::CreateAutoResetEvent(false)) {}
 
@@ -191,6 +209,7 @@ void XmaContext::ClearLocked(XMA_CONTEXT_DATA* data) {
   current_frame_remaining_subframes_ = 0;
   loop_frame_output_limit_ = 0;
   loop_start_skip_pending_ = false;
+  ResetDecoder(av_context_);
 }
 
 void XmaContext::Disable() {
@@ -205,6 +224,10 @@ void XmaContext::Release() {
   set_is_allocated(false);
   auto context_ptr = memory()->TranslateVirtual(guest_ptr());
   std::memset(context_ptr, 0, sizeof(XMA_CONTEXT_DATA));
+  current_frame_remaining_subframes_ = 0;
+  loop_frame_output_limit_ = 0;
+  loop_start_skip_pending_ = false;
+  ResetDecoder(av_context_);
 }
 
 void XmaContext::SwapInputBuffer(XMA_CONTEXT_DATA* data) {
