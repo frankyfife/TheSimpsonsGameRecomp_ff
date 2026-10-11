@@ -261,9 +261,11 @@ set(SDL_OPENGLES OFF CACHE BOOL "" FORCE)
 set(SDL_VULKAN OFF CACHE BOOL "" FORCE)
 set(SDL_METAL OFF CACHE BOOL "" FORCE)
 
-# Disable dummy drivers
+# Disable dummy drivers, except the dummy audio driver, which the SDL audio
+# driver falls back to when there is no output device to open (the game would
+# hang without one).
 set(SDL_DISKAUDIO OFF CACHE BOOL "" FORCE)
-set(SDL_DUMMYAUDIO OFF CACHE BOOL "" FORCE)
+set(SDL_DUMMYAUDIO ON CACHE BOOL "" FORCE)
 set(SDL_DUMMYVIDEO OFF CACHE BOOL "" FORCE)
 
 # Linux audio backends
