@@ -51,6 +51,8 @@ What it adds to the original project:
 - **Start episode (level select)** in the launcher: a new game can start in any of the 18 episodes.
 - **Character select:** other characters for players 1 and 2, chosen in the launcher or in game,
   which restarts from the last checkpoint with them.
+- **Launcher settings that fold:** every settings card and subsection folds away under its
+  heading, and the launcher remembers which ones you opened.
 - **Fixes:** short sound effects cut off or starting with a fragment of another sound, the game
   hanging at startup without an audio output device, the game running 7.5% fast on Windows, the
   game's timers running at 64% of their rate on Windows, even physics steps at 60 FPS, choppy,
@@ -223,6 +225,7 @@ original project's `main`:
 | [`fix-xma-stream-reset`](https://github.com/frankyfife/TheSimpsonsGameRecomp_ff/tree/fix-xma-stream-reset) | Cut and garbled sound effects |
 | [`fix-no-audio-device`](https://github.com/frankyfife/TheSimpsonsGameRecomp_ff/tree/fix-no-audio-device) | No audio output device |
 | [`character-select`](https://github.com/frankyfife/TheSimpsonsGameRecomp_ff/tree/character-select) | Character select (based on `freecam`, whose controller hook it shares) |
+| [`launcher-collapsible-settings`](https://github.com/frankyfife/TheSimpsonsGameRecomp_ff/tree/launcher-collapsible-settings) | Launcher settings that fold |
 
 ## Status
 
