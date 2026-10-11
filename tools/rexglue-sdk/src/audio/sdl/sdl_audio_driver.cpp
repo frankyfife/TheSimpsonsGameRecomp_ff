@@ -138,8 +138,24 @@ bool SDLAudioDriver::Initialize() {
   sdl_stream_ = SDL_OpenAudioDeviceStream(SDL_AUDIO_DEVICE_DEFAULT_PLAYBACK, &desired_spec,
                                           SDLCallback, this);
   if (!sdl_stream_) {
-    REXAPU_ERROR("SDL_OpenAudioDeviceStream() failed: {}", SDL_GetError());
-    return false;
+    // No output device (none connected, or a TV or receiver that is off).
+    // Without a stream nothing consumes the game's frames and the game hangs
+    // at startup, so play on SDL's dummy driver instead, which consumes them
+    // in real time without sound.
+    REXAPU_WARN("SDL_OpenAudioDeviceStream() failed: {}; continuing without sound",
+                SDL_GetError());
+    SDL_QuitSubSystem(SDL_INIT_AUDIO);
+    SDL_SetHint(SDL_HINT_AUDIO_DRIVER, "dummy");
+    if (!SDL_InitSubSystem(SDL_INIT_AUDIO)) {
+      REXAPU_ERROR("SDL dummy audio failed to start: {}", SDL_GetError());
+      return false;
+    }
+    sdl_stream_ = SDL_OpenAudioDeviceStream(SDL_AUDIO_DEVICE_DEFAULT_PLAYBACK, &desired_spec,
+                                            SDLCallback, this);
+    if (!sdl_stream_) {
+      REXAPU_ERROR("SDL_OpenAudioDeviceStream() failed on dummy audio: {}", SDL_GetError());
+      return false;
+    }
   }
 
   SDL_AudioDeviceID sdl_device = SDL_GetAudioStreamDevice(sdl_stream_);
