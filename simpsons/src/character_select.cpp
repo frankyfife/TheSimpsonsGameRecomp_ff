@@ -226,6 +226,18 @@ void RequestCharacterRestart() {
 // the game thread, before the tick runs.
 void CharacterSelectTick(PPCContext& ctx, uint8_t* base) {
   const uint32_t game_flow = LoadBE32(base, kGameFlowManager);
+  {  // TEMPORARY diagnostics
+    static uint32_t last_flags = ~0u, last_ui = ~0u, last_reasons = ~0u, last_state = ~0u;
+    const uint32_t level = LoadBE32(base, kLevelState);
+    const uint32_t flags = game_flow ? LoadBE32(base, game_flow + kFlowFlags) : 0;
+    const uint32_t ui = LoadBE32(base, kUiPauseCount);
+    const uint32_t reasons = LoadBE32(base, kPauseReasons);
+    const uint32_t state = level ? LoadBE32(base, level + 12) | (uint32_t(*Host(base, level + 17)) << 16) : 0xFFFF;
+    if (flags != last_flags || ui != last_ui || reasons != last_reasons || state != last_state) {
+      REXLOG_INFO("[charsel-diag] flow flags {:08X} ui pause {} reasons {:08X} level state {:X}", flags, ui, reasons, state);
+      last_flags = flags; last_ui = ui; last_reasons = reasons; last_state = state;
+    }
+  }
   // TEMPORARY TEST trigger.
   static int64_t level_since_ns = 0;
   const double test_after = REXCVAR_GET(character_test_restart_s);
