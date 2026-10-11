@@ -32,6 +32,11 @@
 // the GameFlowManager's restart-pending flag set first as they do. The restart
 // restores the snapshot the last checkpoint took, so progress since then is
 // lost, as after a death.
+//
+// Levels are scripted for their own characters: with others, triggers that
+// wait for a particular character or power, objectives and cutscenes may not
+// fire (reported in play), so a level can get stuck. That is in each level's
+// data, not fixable here; the menu and the launcher say so.
 
 #include <algorithm>
 #include <atomic>
@@ -491,8 +496,9 @@ class CharacterMenuDialog : public rex::ui::ImGuiDialog {
                          g_menu.row == 3 ? "> Close" : "  Close");
       ImGui::Separator();
       ImGui::TextColored(dim, "D-pad / arrows: choose    A / Enter: confirm    B / Esc: close");
-      ImGui::TextColored(dim, "Levels are built for their characters' powers; with others you");
-      ImGui::TextColored(dim, "can get stuck. \"The level's character\" brings them back.");
+      ImGui::TextColored(dim, "For fun and exploring: levels are built for their own characters.");
+      ImGui::TextColored(dim, "With others, story triggers, objectives and cutscenes may not fire");
+      ImGui::TextColored(dim, "and you can get stuck. \"The level's character\" brings them back.");
       ImGui::TextColored(dim, "The restart loses the progress since the last checkpoint.");
     }
     ImGui::End();
