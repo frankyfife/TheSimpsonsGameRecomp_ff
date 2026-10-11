@@ -130,6 +130,22 @@
     background:radial-gradient(circle, var(--surface) 0 3px, var(--ink) 3px 4.5px, var(--pink) 4.5px 100%)}
   h3{font-family:var(--display); font-weight:normal; font-size:16px; letter-spacing:.6px; color:var(--blue);
     margin:22px 0 12px}
+  /* Settings cards and their subsections fold away under their headings. */
+  .settings-tools{justify-content:flex-end; margin-bottom:12px}
+  .collapsible > h2, .subsection > h3{cursor:pointer; user-select:none}
+  .subsection > h3{display:flex; align-items:center; gap:8px}
+  /* A chevron drawn with two borders (the display font has no arrow glyphs):
+     pointing down while open, right while folded. */
+  .collapsible > h2::after, .subsection > h3::after{content:""; flex:none; margin-left:auto;
+    margin-right:6px; width:9px; height:9px; border-right:3px solid var(--text-dim);
+    border-bottom:3px solid var(--text-dim); transform:translateY(-3px) rotate(45deg);
+    transition:transform .15s}
+  .collapsible.collapsed > h2::after, .subsection.collapsed > h3::after{
+    transform:rotate(-45deg)}
+  .collapsible.collapsed > h2, .subsection.collapsed > h3{margin-bottom:0}
+  .collapsed > .collapse-body{display:none}
+  .collapsible > h2:focus-visible, .subsection > h3:focus-visible{outline:2px dashed var(--blue);
+    outline-offset:4px}
   .muted{color:var(--text-dim); font-size:14px; line-height:1.6}
   .ok{color:var(--green); font-weight:700} .err{color:var(--red); font-weight:700}
   .row{display:flex; gap:10px; align-items:center; flex-wrap:wrap}
@@ -406,6 +422,10 @@
 
   <!-- =========================== SETTINGS =========================== -->
   <section id="tab-settings" class="hidden">
+    <div class="row settings-tools">
+      <button class="smallbtn" id="settingsexpand">Expand all</button>
+      <button class="smallbtn" id="settingscollapse">Collapse all</button>
+    </div>
     <div class="card">
       <h2>Display</h2>
       <div class="grid">
@@ -1590,6 +1610,63 @@ let settingsLoaded = false, saveTimer = null, savePending = false;
 function updateSharpnessField(){
   $("#fsrsharpfield").classList.toggle("hidden", $("#s-present_effect").value !== "fsr");
 }
+// Settings: every card, and every subsection inside a card, folds away under
+// its heading (click, Enter or Space). Folded by default; what was opened is
+// remembered in this browser.
+function makeSettingsCollapsible(){
+  const tab = document.getElementById("tab-settings");
+  if (!tab) return;
+  let state = {};
+  try { state = JSON.parse(localStorage.getItem("settingsCollapsed") || "{}") || {}; } catch (e) { state = {}; }
+  const save = () => { try { localStorage.setItem("settingsCollapsed", JSON.stringify(state)); } catch (e) {} };
+  const holders = [];
+  const foldable = (holder, heading, key) => {
+    heading.setAttribute("role", "button");
+    heading.tabIndex = 0;
+    const set = collapsed => {
+      holder.classList.toggle("collapsed", collapsed);
+      heading.setAttribute("aria-expanded", String(!collapsed));
+      state[key] = collapsed;
+    };
+    set(state[key] !== false);
+    const toggle = () => { set(!holder.classList.contains("collapsed")); save(); };
+    heading.addEventListener("click", toggle);
+    heading.addEventListener("keydown", e => {
+      if (e.key === "Enter" || e.key === " ") { e.preventDefault(); toggle(); }
+    });
+    holders.push(set);
+  };
+  tab.querySelectorAll(":scope > .card").forEach(card => {
+    const h2 = card.querySelector(":scope > h2");
+    if (!h2) return;
+    const body = document.createElement("div");
+    body.className = "collapse-body";
+    while (h2.nextSibling) body.appendChild(h2.nextSibling);
+    card.appendChild(body);
+    card.classList.add("collapsible");
+    foldable(card, h2, "card:" + h2.textContent.trim());
+    let subBody = null;
+    for (const el of [...body.children]) {
+      if (el.tagName === "H3") {
+        const sub = document.createElement("div");
+        sub.className = "subsection";
+        subBody = document.createElement("div");
+        subBody.className = "collapse-body";
+        el.before(sub);
+        sub.appendChild(el);
+        sub.appendChild(subBody);
+        foldable(sub, el, "sub:" + el.textContent.trim());
+      } else if (subBody) {
+        subBody.appendChild(el);
+      }
+    }
+  });
+  const all = collapsed => { holders.forEach(set => set(collapsed)); save(); };
+  document.getElementById("settingsexpand").addEventListener("click", () => all(false));
+  document.getElementById("settingscollapse").addEventListener("click", () => all(true));
+}
+makeSettingsCollapsible();
+
 async function loadSettings(){
   const s = await api.get("/api/settings"); const v = s.values;
   $("#s-fullscreen").value = String(v.fullscreen);
