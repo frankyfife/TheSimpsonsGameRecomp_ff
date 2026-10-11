@@ -49,9 +49,10 @@ What it adds to the original project:
   off.
 - **Clean eyes:** no more speckled dark shadow on the characters' eye whites.
 - **Start episode (level select)** in the launcher: a new game can start in any of the 18 episodes.
-- **Fixes:** the game running 7.5% fast on Windows, the game's timers running at 64% of their
-  rate on Windows, even physics steps at 60 FPS, choppy, slowed-down sound on some Windows PCs,
-  the menus' frame rate on Windows, and the skip-intro patch on releases that are not in English.
+- **Fixes:** short sound effects cut off or starting with a fragment of another sound, the game
+  running 7.5% fast on Windows, the game's timers running at 64% of their rate on Windows, even
+  physics steps at 60 FPS, choppy, slowed-down sound on some Windows PCs, the menus' frame rate on
+  Windows, and the skip-intro patch on releases that are not in English.
 
 The changes were developed and checked on Windows 11. They build for Linux too but have not been
 tried there.
@@ -145,6 +146,16 @@ for byte. Starting this way has been tried with Springfield and The Day the Eart
   a high-resolution timer (Windows 10 version 1803 or newer), and the game opts out of Windows 11
   ignoring its timer resolution request to save power. Measured outside the game; not yet confirmed
   on one of the PCs that had the problem.
+- **Cut and garbled sound effects.** Hits, jumps, shouts and the lumberjacks' saws and hooks
+  often sounded clipped or began with a scrap of some other sound. The game plays its short effects
+  on XMA decoder contexts it takes and gives back all the time, and a reused context carried the
+  previous sound over in two ways: the decoder kept the end of the old sound and mixed it into the
+  start of the new one, and the game's sound engine reads the output buffer before the first
+  blocks of a new sound are decoded, where the old sound still was. Every new sound now starts on
+  a fresh decoder and a silent output buffer. The second cause was found and fixed the same way in
+  the Need for Speed: Most Wanted recompilation, whose sound engine is the same. The upstream
+  project had found the first in July but reverted its fix, which flushed a decoder that was not
+  open yet (and FFmpeg's XMA decoder had no flush that would have cleared the overlap).
 - **Timer resolution on Windows.** The runtime asks Windows for its finest timer resolution at
   startup, but the SDL audio driver withdrew that request a moment later: it tells SDL to leave the
   timer resolution alone, SDL then ends the 1 ms period it had begun, and on Windows that cancels
@@ -182,6 +193,7 @@ original project's `main`:
 | [`fix-skip-intro-languages`](https://github.com/frankyfife/TheSimpsonsGameRecomp_ff/tree/fix-skip-intro-languages) | Skip intro on releases that are not in English |
 | [`fix-game-tick-count`](https://github.com/frankyfife/TheSimpsonsGameRecomp_ff/tree/fix-game-tick-count) | Game speed on Windows |
 | [`fix-havok-step`](https://github.com/frankyfife/TheSimpsonsGameRecomp_ff/tree/fix-havok-step) | Physics at 60 FPS and `physics_log` |
+| [`fix-xma-stream-reset`](https://github.com/frankyfife/TheSimpsonsGameRecomp_ff/tree/fix-xma-stream-reset) | Cut and garbled sound effects |
 
 ## Status
 
