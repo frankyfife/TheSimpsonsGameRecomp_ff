@@ -24,12 +24,15 @@
 // which matches the GUIDs the game's Lua uses (Lisa in Grand Theft Scratchy,
 // Bart and Homer in Medal of Homer).
 
+#include <atomic>
+#include <chrono>
 #include <cstdint>
 #include <cstring>
 #include <string>
 #include <string_view>
 
 #include <rex/cvar.h>
+#include <rex/hook.h>
 #include <rex/logging.h>
 #include <rex/platform.h>
 #include <rex/ppc.h>
@@ -41,9 +44,16 @@ REXCVAR_DEFINE_STRING(character_player2, "", "Game",
                       "Character template for player 2, empty = the level's own; takes effect at "
                       "the next level load or checkpoint restart");
 
+REXCVAR_DEFINE_DOUBLE(character_test_restart_s, 0.0, "Game",
+                      "TEMPORARY TEST: seconds into a level before switching player 1 to "
+                      "marge_mm2_h2 and restarting from the checkpoint (0 = off)");
+
 // ResolvePlayers: r3 = the GameFlowManager.
 REX_EXTERN(sub_8289E428);
 REX_EXTERN(__imp__sub_8289E428);
+// Restarts the main loop from the last checkpoint snapshot: r3 = the
+// GameFlowManager, r4 = 1. The pause menu's restart and a death end there.
+REX_EXTERN(sub_8289BEA8);
 
 struct CharacterTemplate {
   const char* name;
@@ -95,6 +105,19 @@ constexpr CharacterTemplate kTemplates[] = {
 
 constexpr uint32_t kResolvedPlayers = 0x354;  // 4 slots x 16-byte GUID
 constexpr int kSlots = 2;
+
+constexpr uint32_t kGameFlowManager = 0x82D08BA8;
+constexpr uint32_t kFlowEpisode = 160;
+constexpr uint32_t kFlowMap = 172;
+constexpr uint32_t kFlowFlags = 1200;
+constexpr uint32_t kFlowRestartPending = 0x1000;
+constexpr uint32_t kFlowBusy = 0x1000 | 0x4000 | 0x10000;  // restart, map reload, delayed restart
+constexpr uint32_t kLevelState = 0x82D08C34;  // state at +12 (0 = running), started at +17
+constexpr uint32_t kSimEnabled = 0x82CED760;
+constexpr uint32_t kPauseReasons = 0x82D572E4;  // 0x80000000 = the free camera's photo mode
+constexpr uint32_t kUiPauseCount = 0x82D57368;  // pause menu and other UI screens
+
+std::atomic<bool> g_restart_requested{false};
 
 // Host address of guest memory as the generated code computes it
 // (REX_PHYS_HOST_OFFSET): on Windows the physical heaps from 0xE0000000,
@@ -176,7 +199,61 @@ void ApplyCharacterChoices(uint8_t* base, uint32_t game_flow) {
   }
 }
 
+// Whether the level is running with nothing in front of it: no movie, no
+// loading, no menu, no photo mode, no restart already on its way.
+bool LevelRestartable(uint8_t* base, uint32_t game_flow) {
+  const uint32_t level = LoadBE32(base, kLevelState);
+  if (!game_flow || !level) {
+    return false;
+  }
+  return LoadBE32(base, level + 12) == 0 && *Host(base, level + 17) == 1 &&
+         LoadBE32(base, game_flow + kFlowMap) != 0 &&
+         LoadBE32(base, game_flow + kFlowEpisode) != 0 &&
+         (LoadBE32(base, game_flow + kFlowFlags) & kFlowBusy) == 0 &&
+         LoadBE32(base, kSimEnabled) != 0 && LoadBE32(base, kPauseReasons) == 0 &&
+         LoadBE32(base, kUiPauseCount) == 0;
+}
+
 }  // namespace
+
+// Asks for a restart from the last checkpoint with the current choices, as
+// soon as the level can take one.
+void RequestCharacterRestart() {
+  g_restart_requested = true;
+}
+
+// Called by freecam.cpp's override of the simulation tick (sub_82691540) on
+// the game thread, before the tick runs.
+void CharacterSelectTick(PPCContext& ctx, uint8_t* base) {
+  const uint32_t game_flow = LoadBE32(base, kGameFlowManager);
+  // TEMPORARY TEST trigger.
+  static int64_t level_since_ns = 0;
+  const double test_after = REXCVAR_GET(character_test_restart_s);
+  if (test_after > 0.0) {
+    const int64_t now = std::chrono::steady_clock::now().time_since_epoch().count();
+    if (!LevelRestartable(base, game_flow)) {
+      level_since_ns = 0;
+    } else if (!level_since_ns) {
+      level_since_ns = now;
+    } else if (now - level_since_ns > int64_t(test_after * 1e9)) {
+      REXCVAR_SET(character_test_restart_s, 0.0);
+      REXCVAR_SET(character_player1, std::string("marge_mm2_h2"));
+      REXLOG_INFO("[charsel] test: player 1 becomes marge_mm2_h2, restarting");
+      g_restart_requested = true;
+    }
+  }
+  if (!g_restart_requested.load() || !LevelRestartable(base, game_flow)) {
+    return;
+  }
+  g_restart_requested = false;
+  StoreBE32(base, game_flow + kFlowFlags,
+            LoadBE32(base, game_flow + kFlowFlags) | kFlowRestartPending);
+  REXLOG_INFO("[charsel] restarting from the last checkpoint");
+  rex::CallFrame frame(ctx);
+  frame.ctx.r3.u64 = game_flow;
+  frame.ctx.r4.u64 = 1;
+  sub_8289BEA8(frame, base);
+}
 
 REX_FUNC(sub_8289E428) {
   const uint32_t game_flow = ctx.r3.u32;
