@@ -49,10 +49,13 @@ What it adds to the original project:
   off.
 - **Clean eyes:** no more speckled dark shadow on the characters' eye whites.
 - **Start episode (level select)** in the launcher: a new game can start in any of the 18 episodes.
+- **Character select:** other characters for players 1 and 2, chosen in the launcher or in game,
+  which restarts from the last checkpoint with them.
 - **Fixes:** short sound effects cut off or starting with a fragment of another sound, the game
-  running 7.5% fast on Windows, the game's timers running at 64% of their rate on Windows, even
-  physics steps at 60 FPS, choppy, slowed-down sound on some Windows PCs, the menus' frame rate on
-  Windows, and the skip-intro patch on releases that are not in English.
+  hanging at startup without an audio output device, the game running 7.5% fast on Windows, the
+  game's timers running at 64% of their rate on Windows, even physics steps at 60 FPS, choppy,
+  slowed-down sound on some Windows PCs, the menus' frame rate on Windows, and the skip-intro patch
+  on releases that are not in English.
 
 The changes were developed and checked on Windows 11. They build for Linux too but have not been
 tried there.
@@ -120,6 +123,27 @@ The launcher changes `gamedata/simpsons_gameflow.lua` for this and keeps the unt
 `simpsons_gameflow.lua.original`. Choosing Land of Chocolate again restores the original file byte
 for byte. Starting this way has been tried with Springfield and The Day the Earth Stood Stupid.
 
+### Character select
+
+The launcher's **Settings** tab has a **Characters** section that sets who plays as player 1 and
+player 2 from the next level start: Homer, Marge, Bart or Lisa with all their powers, in the
+episode costumes (Medal of Homer, NeverQuest, Big Super Happy Fun Fun, Grand Theft Scratchy, Meet
+Thy Player, The Colossal Donut), or at an earlier power stage of the story, or the level's own
+character. In game, **F7**, or **Y** while the pause menu is open, opens the same choice over the
+game (D-pad or arrow keys to choose, A or Enter to confirm, B or Esc to close); confirming
+restarts from the last checkpoint with the new characters, which loses the progress since then,
+as a death does. The settings are `character_player1` and `character_player2` in `simpsons.toml`.
+
+It is meant for fun and exploring. The levels are scripted for their own characters: with others,
+story triggers, objectives and cutscenes may not fire, the level's tutorial hints still name the
+original characters, and you can get stuck. Choosing "The level's character" brings the original
+ones back to go on with the story. A character can only be in a level once.
+
+Under the hood the game resolves a template for each of a level's player slots on every level
+load and checkpoint restart, and this replaces the result for players 1 and 2; the game loads the
+template itself. The GUIDs of the 37 character templates were read from the character data and
+match the three the game's own scripts use. Code: `simpsons/src/character_select.cpp`.
+
 ### Fixes
 
 - **Game speed on Windows.** The game measures every frame with a millisecond tick count, which
@@ -146,6 +170,9 @@ for byte. Starting this way has been tried with Springfield and The Day the Eart
   a high-resolution timer (Windows 10 version 1803 or newer), and the game opts out of Windows 11
   ignoring its timer resolution request to save power. Measured outside the game; not yet confirmed
   on one of the PCs that had the problem.
+- **No audio output device.** Without one (nothing connected, or a TV or receiver that is off),
+  the audio driver did not start and the game hung at startup. It now plays on SDL's silent dummy
+  driver instead and logs that it continues without sound.
 - **Cut and garbled sound effects.** Hits, jumps, shouts and the lumberjacks' saws and hooks
   often sounded clipped or began with a scrap of some other sound. The game plays its short effects
   on XMA decoder contexts it takes and gives back all the time, and a reused context carried the
@@ -194,6 +221,8 @@ original project's `main`:
 | [`fix-game-tick-count`](https://github.com/frankyfife/TheSimpsonsGameRecomp_ff/tree/fix-game-tick-count) | Game speed on Windows |
 | [`fix-havok-step`](https://github.com/frankyfife/TheSimpsonsGameRecomp_ff/tree/fix-havok-step) | Physics at 60 FPS and `physics_log` |
 | [`fix-xma-stream-reset`](https://github.com/frankyfife/TheSimpsonsGameRecomp_ff/tree/fix-xma-stream-reset) | Cut and garbled sound effects |
+| [`fix-no-audio-device`](https://github.com/frankyfife/TheSimpsonsGameRecomp_ff/tree/fix-no-audio-device) | No audio output device |
+| [`character-select`](https://github.com/frankyfife/TheSimpsonsGameRecomp_ff/tree/character-select) | Character select (based on `freecam`, whose controller hook it shares) |
 
 ## Status
 
@@ -306,7 +335,7 @@ Every control can be changed in the launcher's **Keyboard & mouse** section, whe
 have several keys, mouse buttons included, and the wheel and side buttons can be bound. The camera
 can also be put on keys (Look up, down, left and right), on top of the mouse. The keys that open
 the in-game overlays (F1 controls, F4 settings, F3 FPS overlay, ` console, and in this fork F6 free
-camera and F8 photo mode) can be changed there too. In the game, F4 opens the settings, with the
+camera, F7 characters and F8 photo mode) can be changed there too. In the game, F4 opens the settings, with the
 controls under Input > Keybinds (press *Save to config* to keep changes made there).
 
 ## Known issues
