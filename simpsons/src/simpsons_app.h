@@ -7,12 +7,17 @@
 #include <rex/rex_app.h>
 
 namespace rex::ui {
+class ImGuiDrawer;
 class Window;
 }
 
 // freecam.cpp: the free camera's key binds and keyboard listener.
 void InitFreecam(rex::ui::Window* window);
 void ShutdownFreecam(rex::ui::Window* window);
+
+// character_select.cpp: the in-game character menu.
+void InitCharacterMenu(rex::ui::ImGuiDrawer* drawer);
+void ShutdownCharacterMenu();
 
 class SimpsonsApp : public rex::ReXApp {
  public:
@@ -25,7 +30,11 @@ class SimpsonsApp : public rex::ReXApp {
   }
 
   void OnPostSetup() override { InitFreecam(window()); }
-  void OnShutdown() override { ShutdownFreecam(window()); }
+  void OnCreateDialogs(rex::ui::ImGuiDrawer* drawer) override { InitCharacterMenu(drawer); }
+  void OnShutdown() override {
+    ShutdownCharacterMenu();
+    ShutdownFreecam(window());
+  }
 
   // Override virtual hooks for customization:
   // void OnPostInitLogging() override {}
