@@ -318,7 +318,13 @@ SETTINGS_SCHEMA = {
         "bind_console": "Backtick",
         "bind_freecam": "F6",
         "bind_photo_mode": "F8",
+        "bind_characters": "F7",
     }.items()},
+    # Characters for players 1 and 2 (simpsons/src/character_select.cpp): a
+    # character template name, "" = the level's own. Used from the next level
+    # start; in game F7 (or Y in the pause menu) changes them for the session.
+    "character_player1": ("str", "", True),
+    "character_player2": ("str", "", True),
     # game
     "user_language": ("int", 1, True),
     # Always show subtitles, even in a new game's first cutscene (the engine

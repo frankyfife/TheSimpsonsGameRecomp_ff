@@ -15,6 +15,7 @@ class Memory;
 void ApplyInkOutlineOptions(rex::memory::Memory* memory);
 
 namespace rex::ui {
+class ImGuiDrawer;
 class Window;
 }
 
@@ -27,6 +28,10 @@ void ApplyEyeShadingOptions(rex::memory::Memory* memory);
 
 // physics_step.cpp: sets the Havok step threshold in the loaded image.
 void ApplyPhysicsStepOptions(rex::memory::Memory* memory);
+
+// character_select.cpp: the in-game character menu.
+void InitCharacterMenu(rex::ui::ImGuiDrawer* drawer);
+void ShutdownCharacterMenu();
 
 class SimpsonsApp : public rex::ReXApp {
  public:
@@ -44,7 +49,11 @@ class SimpsonsApp : public rex::ReXApp {
     ApplyPhysicsStepOptions(runtime()->memory());
   }
   void OnPostSetup() override { InitFreecam(window()); }
-  void OnShutdown() override { ShutdownFreecam(window()); }
+  void OnCreateDialogs(rex::ui::ImGuiDrawer* drawer) override { InitCharacterMenu(drawer); }
+  void OnShutdown() override {
+    ShutdownCharacterMenu();
+    ShutdownFreecam(window());
+  }
 
   // Override virtual hooks for customization:
   // void OnPostInitLogging() override {}

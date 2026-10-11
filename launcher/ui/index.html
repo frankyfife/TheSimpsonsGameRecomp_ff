@@ -560,6 +560,24 @@
           <div class="hint" id="inkcolorhint">Any colour as RRGGBB hex. Restart needed.</div>
         </div>
       </div>
+      <h3>Characters</h3>
+      <div class="grid">
+        <div class="field">
+          <label>Player 1</label>
+          <select id="s-character_player1"></select>
+          <div class="hint">Who plays from the next level start. In game, F7 or Y in the pause
+            menu switches them and restarts from the last checkpoint (the progress since then is
+            lost, as after a death).</div>
+        </div>
+        <div class="field">
+          <label>Player 2</label>
+          <select id="s-character_player2"></select>
+          <div class="hint">For fun and exploring: levels are built for their own characters.
+            With others, story triggers, objectives and cutscenes may not fire and you can get
+            stuck; "The level's character" brings them back to go on with the story. A
+            character can only be in a level once.</div>
+        </div>
+      </div>
       <h3>Frame rate</h3>
       <div class="grid">
         <div class="field">
@@ -943,6 +961,62 @@ function syncAllSelectLabels(){
   document.querySelectorAll(".customselect > select").forEach(syncSelectLabel);
 }
 $("#s-ui_theme").value = themePref;
+// The character choices, in the order of the in-game menu
+// (simpsons/src/character_select.cpp, kChoices): template name, label.
+const CHARACTER_CHOICES = [
+  ["", "The level's character"],
+  ["homer_fh1_gh1_hh1_h2", "Homer"],
+  ["homer_fh1_gh1_hh1_h2_bshff", "Homer - Big Super Happy Fun Fun"],
+  ["homer_fh1_gh1_hh1_h2_moh", "Homer - Medal of Homer"],
+  ["homer_fh1_gh1_hh1_h2_moh_drk", "Homer - Medal of Homer (dark)"],
+  ["homer_fh1_gh1_hh1_h2_nq", "Homer - NeverQuest"],
+  ["homer_fh1_gh1_hh1_h2_mtp", "Homer - Meet Thy Player"],
+  ["homer_fh1_gh0_hh1_h1_sotcd", "Homer - The Colossal Donut"],
+  ["homer_fh0_gh0_hh0_h0", "Homer, stage 1 of 5"],
+  ["homer_fh1_gh0_hh0_h0", "Homer, stage 2 of 5"],
+  ["homer_fh1_gh0_hh1_h1", "Homer, stage 3 of 5"],
+  ["homer_fh1_gh0_hh1_h2", "Homer, stage 4 of 5"],
+  ["marge_mm2_h2", "Marge"],
+  ["marge_mm2_h2_gts", "Marge - Grand Theft Scratchy"],
+  ["marge_mm2_h2_nq", "Marge - NeverQuest"],
+  ["marge_mm2_h2_mtp", "Marge - Meet Thy Player"],
+  ["marge_mm0_h0", "Marge, stage 1 of 5"],
+  ["marge_mm1_h0", "Marge, stage 2 of 5"],
+  ["marge_mm1_h1", "Marge, stage 3 of 5"],
+  ["marge_mm1_h2", "Marge, stage 4 of 5"],
+  ["bart_bc2_grp1_ss2_h2", "Bart"],
+  ["bart_bc2_grp1_ss2_h2_moh", "Bart - Medal of Homer"],
+  ["bart_bc2_grp1_ss2_h2_moh_drk", "Bart - Medal of Homer (dark)"],
+  ["bart_bc2_grp1_ss2_h2_mtp", "Bart - Meet Thy Player"],
+  ["bart_bc0_grp0_ss1_h0", "Bart, stage 1 of 6"],
+  ["bart_bc1_grp0_ss1_h0", "Bart, stage 2 of 6"],
+  ["bart_bc1_grp1_ss1_h0", "Bart, stage 3 of 6"],
+  ["bart_bc1_grp1_ss1_h1", "Bart, stage 4 of 6"],
+  ["bart_bc1_grp1_ss1_h2", "Bart, stage 5 of 6"],
+  ["lisa_sx2_hog3_h2", "Lisa"],
+  ["lisa_sx2_hog3_h2_bshff", "Lisa - Big Super Happy Fun Fun"],
+  ["lisa_sx2_hog3_h2_mtp", "Lisa - Meet Thy Player"],
+  ["lisa_sx0_hog0_h0", "Lisa, stage 1 of 7"],
+  ["lisa_sx1_hog1_h0", "Lisa, stage 2 of 7"],
+  ["lisa_sx2_hog1_h0", "Lisa, stage 3 of 7"],
+  ["lisa_sx2_hog2_h0", "Lisa, stage 4 of 7"],
+  ["lisa_sx2_hog2_h1", "Lisa, stage 5 of 7"],
+  ["lisa_sx2_hog2_h2", "Lisa, stage 6 of 7"],
+];
+function fillCharacterSelects(){
+  for (const id of ["#s-character_player1", "#s-character_player2"]) {
+    const sel = $(id);
+    if (!sel) continue;
+    sel.innerHTML = "";
+    for (const [name, label] of CHARACTER_CHOICES) {
+      const opt = document.createElement("option");
+      opt.value = name;
+      opt.textContent = label;
+      sel.appendChild(opt);
+    }
+  }
+}
+fillCharacterSelects();
 enhanceSelects();
 
 /* donut sprinkles */
@@ -1403,6 +1477,7 @@ const OVERLAY_KEYS = [
   ["bind_console", "Console"],
   ["bind_freecam", "Free camera on/off (controller: L3+R3)"],
   ["bind_photo_mode", "Photo mode: world paused, HUD hidden (controller: Y with the free camera on)"],
+  ["bind_characters", "Choose characters, restart from the last checkpoint (controller: Y in the pause menu)"],
 ];
 let binds = {}, bindDefaults = {};
 // Browser key codes to the game's key names.
@@ -1533,6 +1608,8 @@ async function loadSettings(){
   $("#s-ink_outline_color").value = (v.ink_outline_color || "000000").toUpperCase();
   updateInkFields(true);
   $("#s-eye_shading").value = v.eye_shading || "clean";
+  $("#s-character_player1").value = v.character_player1 || "";
+  $("#s-character_player2").value = v.character_player2 || "";
   $("#s-present_effect").value = v.present_effect || "bilinear";
   $("#s-present_fsr_sharpness_reduction").value = String(Number(v.present_fsr_sharpness_reduction));
   $("#s-anisotropic_override").value = String(v.anisotropic_override);
@@ -1569,6 +1646,8 @@ function settingsValues(){
     ink_outline_strength: Number($("#s-ink_outline_strength").value),
     ink_outline_color: inkColorValue(),
     eye_shading: $("#s-eye_shading").value,
+    character_player1: $("#s-character_player1").value,
+    character_player2: $("#s-character_player2").value,
     present_effect: $("#s-present_effect").value,
     present_fsr_sharpness_reduction: Number($("#s-present_fsr_sharpness_reduction").value),
     anisotropic_override: Number($("#s-anisotropic_override").value),

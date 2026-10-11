@@ -464,6 +464,10 @@ REX_FUNC(sub_8269D8F8) {
             g_cam.flags1, g_cam.flags2);
 }
 
+// character_select.cpp: whether its menu takes player 1's pad, and the
+// buttons the game gets then.
+bool CharacterMenuPad(uint16_t buttons, uint16_t* game_buttons);
+
 REX_FUNC(sub_82B766A8) {
   const uint32_t user = ctx.r3.u32;
   const uint32_t state = ctx.r4.u32;
@@ -482,6 +486,14 @@ REX_FUNC(sub_82B766A8) {
   pad.ry = LoadBES16(gamepad + 10);
 
   if (user == 0) {
+    // The character menu (character_select.cpp) takes the pad while open.
+    uint16_t game_buttons = pad.buttons;
+    if (CharacterMenuPad(pad.buttons, &game_buttons)) {
+      g_pad = pad;
+      std::memset(gamepad, 0, 12);
+      StoreBE16(gamepad, game_buttons);
+      return;
+    }
     const uint16_t pressed = pad.buttons & ~g_pad.buttons;
     const uint16_t released = g_pad.buttons & ~pad.buttons;
     const bool chord = (pad.buttons & (kPadL3 | kPadR3)) == (kPadL3 | kPadR3);
@@ -524,7 +536,11 @@ REX_FUNC(sub_82B766A8) {
   }
 }
 
+// character_select.cpp: a restart it asked for, on the game thread.
+void CharacterSelectTick(PPCContext& ctx, uint8_t* base);
+
 REX_FUNC(sub_82691540) {
+  CharacterSelectTick(ctx, base);
   const bool want = g_want_photo.load() && g_applied.load() &&
                     LoadBE32(base, kCameraManager) != 0 && LoadBE32(base, kSimEnabled) != 0;
   if (want != g_frozen.load()) {
