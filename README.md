@@ -51,6 +51,8 @@ What it adds to the original project:
 - **Start episode (level select)** in the launcher: a new game can start in any of the 18 episodes.
 - **Character select:** other characters for players 1 and 2, chosen in the launcher or in game,
   which restarts from the last checkpoint with them.
+- **Co-op in Springfield and the challenges:** a second controller can drop in there too, not only
+  in the story episodes.
 - **Launcher settings that fold:** every settings card and subsection folds away under its
   heading, and the launcher remembers which ones you opened.
 - **Fixes:** short sound effects cut off or starting with a fragment of another sound, the game
@@ -131,8 +133,9 @@ The launcher's **Settings** tab has a **Characters** section that sets who plays
 player 2 from the next level start: Homer, Marge, Bart or Lisa with all their powers, in the
 episode costumes (Medal of Homer, NeverQuest, Big Super Happy Fun Fun, Grand Theft Scratchy, Meet
 Thy Player, The Colossal Donut), or at an earlier power stage of the story, or the level's own
-character. In game, **F7**, or **Y** while the pause menu is open, opens the same choice over the
-game (D-pad or arrow keys to choose, A or Enter to confirm, B or Esc to close); confirming
+character. In game, **F7**, or **Y** while either player's pause menu is open, opens the same
+choice over the game (D-pad or arrow keys to choose, A or Enter to confirm, B or Esc to close; in
+co-op either controller can); confirming
 restarts from the last checkpoint with the new characters, which loses the progress since then,
 as a death does. The settings are `character_player1` and `character_player2` in `simpsons.toml`.
 
@@ -145,6 +148,27 @@ Under the hood the game resolves a template for each of a level's player slots o
 load and checkpoint restart, and this replaces the result for players 1 and 2; the game loads the
 template itself. The GUIDs of the 37 character templates were read from the character data and
 match the three the game's own scripts use. Code: `simpsons/src/character_select.cpp`.
+
+Only the family can be chosen: the player slots load their character from the character package
+that holds the 37 templates of Homer, Marge, Bart and Lisa. The other characters of Springfield
+are in the levels' own data and have no player controls, moves or powers.
+
+### Co-op in Springfield and the challenges
+
+In the story episodes a second controller joins with START and takes over the second character,
+in split screen. The original game allows this nowhere else: Springfield and the timed challenges
+are set to one player. **Co-op in Springfield and the challenges** on the launcher's **Patches**
+tab sets them to two players, as a mod for the PS3 release by OldGamerStuff does, and then a second
+player can join there as in the story; in Springfield they take over the family member who walks
+along. Land of Chocolate keeps one player: Homer is alone there, so the second player would have no
+character (tried: the split screen opens and closes again). With the character select both players
+can choose their character, and in co-op either of them can open its menu from their own pause
+menu.
+
+Like the start episode, the patch changes `gamedata/simpsons_gameflow.lua`, marks every line it
+changed, and turning it off (with Land of Chocolate as the start episode) restores the original
+file byte for byte. Joining in Springfield and switching both characters there has been tried; the
+challenges not yet.
 
 ### Fixes
 
@@ -226,6 +250,7 @@ original project's `main`:
 | [`fix-no-audio-device`](https://github.com/frankyfife/TheSimpsonsGameRecomp_ff/tree/fix-no-audio-device) | No audio output device |
 | [`character-select`](https://github.com/frankyfife/TheSimpsonsGameRecomp_ff/tree/character-select) | Character select (based on `freecam`, whose controller hook it shares) |
 | [`launcher-collapsible-settings`](https://github.com/frankyfife/TheSimpsonsGameRecomp_ff/tree/launcher-collapsible-settings) | Launcher settings that fold |
+| [`coop-everywhere`](https://github.com/frankyfife/TheSimpsonsGameRecomp_ff/tree/coop-everywhere) | Co-op in Springfield and the challenges, the character menu for both controllers, a second injected controller for tests (based on `main`: it builds on the start episode and the character select) |
 
 ## Status
 

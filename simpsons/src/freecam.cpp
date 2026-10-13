@@ -464,9 +464,9 @@ REX_FUNC(sub_8269D8F8) {
             g_cam.flags1, g_cam.flags2);
 }
 
-// character_select.cpp: whether its menu takes player 1's pad, and the
+// character_select.cpp: whether its menu takes player 1's or 2's pad, and the
 // buttons the game gets then.
-bool CharacterMenuPad(uint16_t buttons, uint16_t* game_buttons);
+bool CharacterMenuPad(uint32_t user, uint16_t buttons, uint16_t* game_buttons);
 
 REX_FUNC(sub_82B766A8) {
   const uint32_t user = ctx.r3.u32;
@@ -485,15 +485,18 @@ REX_FUNC(sub_82B766A8) {
   pad.rx = LoadBES16(gamepad + 8);
   pad.ry = LoadBES16(gamepad + 10);
 
-  if (user == 0) {
-    // The character menu (character_select.cpp) takes the pad while open.
-    uint16_t game_buttons = pad.buttons;
-    if (CharacterMenuPad(pad.buttons, &game_buttons)) {
+  // The character menu (character_select.cpp) takes the pad while open.
+  uint16_t game_buttons = pad.buttons;
+  if (CharacterMenuPad(user, pad.buttons, &game_buttons)) {
+    if (user == 0) {
       g_pad = pad;
-      std::memset(gamepad, 0, 12);
-      StoreBE16(gamepad, game_buttons);
-      return;
     }
+    std::memset(gamepad, 0, 12);
+    StoreBE16(gamepad, game_buttons);
+    return;
+  }
+
+  if (user == 0) {
     const uint16_t pressed = pad.buttons & ~g_pad.buttons;
     const uint16_t released = g_pad.buttons & ~pad.buttons;
     const bool chord = (pad.buttons & (kPadL3 | kPadR3)) == (kPadL3 | kPadR3);

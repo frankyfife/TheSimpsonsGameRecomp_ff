@@ -490,11 +490,20 @@ def patch_skip_intro(enable):
     return True, f"{'skipped' if enable else 'restored'} {len(files)} intro videos"
 
 
-# Start episode (level select): the game starts a new game in the episode whose
-# block in gamedata/simpsons_gameflow.lua calls episode:SetDefault() (Land of
-# Chocolate). Moving that call makes new games start elsewhere; games in
-# progress keep their own progress. The untouched file is kept beside it as
-# simpsons_gameflow.lua.original while another episode is chosen.
+# Start episode (level select) and co-op both edit
+# gamedata/simpsons_gameflow.lua, the Lua that builds the game's episodes and
+# modes. Both are rebuilt from the untouched file, kept beside it as
+# simpsons_gameflow.lua.original while the two differ.
+#
+# Start episode: the game starts a new game in the episode whose block calls
+# episode:SetDefault() (Land of Chocolate). Moving that call makes new games
+# start elsewhere; games in progress keep their own progress.
+#
+# Co-op: each mode says how many players it allows (NewMode's numPlayers).
+# The story episodes allow two, Springfield and the timed challenges one;
+# allowing two there lets a second controller drop in with START as in the
+# story, taking over the level's second character. Land of Chocolate stays as
+# it is: Homer is alone there, so a second player has no character to take.
 GAMEFLOW_LUA = "simpsons_gameflow.lua"
 EPISODE_NAMES = {
     "SPR_HUB": "Springfield (hub)",
@@ -516,8 +525,11 @@ EPISODE_NAMES = {
     "RHYMES_WITH_COMPLAINING": "Rhymes with Complaining",
     "MEET_THY_PLAYER": "Meet Thy Player",
 }
+COOP_SKIPPED_EPISODES = {"LAND_OF_CHOCOLATE"}
 _EPISODE_RE = re.compile(r'^([ \t]*)episode\s*=\s*NewEpisode\(\s*game\s*,\s*"([A-Za-z0-9_]+)"', re.M)
 _SET_DEFAULT_RE = re.compile(r'^[ \t]*episode:SetDefault\(\)[^\r\n]*', re.M)
+_ONE_PLAYER_RE = re.compile(r'^([ \t]*mode\s*=\s*NewMode\(.*)"GameMode_OnePlayer"([^\r\n]*?)[ \t]*(?=\r?$)', re.M)
+_COOP_MARK = "  -- two players, opened by the launcher"
 
 
 def _gameflow_files():
@@ -531,6 +543,14 @@ def _gameflow_files():
 def _read_lua(path):
     with open(path, "r", encoding="utf-8", errors="replace", newline="") as f:
         return f.read()
+
+
+def _original_gameflow():
+    """(the gameflow file, its backup, the original text) or (None, None, None)."""
+    lua, backup = _gameflow_files()
+    if lua is None:
+        return None, None, None
+    return lua, backup, _read_lua(backup if backup.is_file() else lua)
 
 
 def _episodes(text):
@@ -548,41 +568,18 @@ def _start_episode_of(text):
     return None
 
 
-def start_episode_state():
-    lua, _ = _gameflow_files()
-    if lua is None:
-        return "unavailable"
-    return _start_episode_of(_read_lua(lua)) or "unavailable"
+def _coop_of(text):
+    """Whether Springfield allows two players."""
+    for episode_id, start, end in _episodes(text):
+        if episode_id == "SPR_HUB":
+            return '"GameMode_OnePlayer"' not in text[start:end]
+    return False
 
 
-def start_episode_options():
-    lua, backup = _gameflow_files()
-    if lua is None:
-        return []
-    text = _read_lua(backup if backup.is_file() else lua)
-    return [{"id": e, "name": EPISODE_NAMES.get(e, e.replace("_", " ").title())}
-            for e, _, _ in _episodes(text)]
-
-
-def set_start_episode(episode_id):
-    lua, backup = _gameflow_files()
-    if lua is None:
-        return False, "game data not installed"
-    original = _read_lua(backup if backup.is_file() else lua)
-    episodes = {e: (start, end) for e, start, end in _episodes(original)}
-    original_start = _start_episode_of(original)
-    if episode_id not in episodes or original_start is None:
-        return False, f"unknown episode {episode_id!r}"
-    if len(_SET_DEFAULT_RE.findall(original)) != 1:
-        return False, "unexpected simpsons_gameflow.lua (expected one episode:SetDefault())"
-    name = EPISODE_NAMES.get(episode_id, episode_id)
-    if episode_id == original_start:
-        if backup.is_file():
-            tmp = lua.with_name(lua.name + ".tmp")
-            tmp.write_text(original, encoding="utf-8", newline="")
-            os.replace(tmp, lua)
-            backup.unlink()
-        return True, f"new games start in {name}"
+def _with_start_episode(original, episode_id):
+    """The original text with new games starting in episode_id, or None."""
+    if episode_id == _start_episode_of(original):
+        return original
     newline = "\r\n" if "\r\n" in original else "\n"
     # Comment out the original call, then add one to the chosen episode's
     # block, right after its NewEpisode(...) line.
@@ -594,13 +591,103 @@ def set_start_episode(episode_id):
     text = (text[:line_end] + f"{match.group(1)}episode:SetDefault()  -- start episode chosen in the launcher"
             + newline + text[line_end:])
     if _start_episode_of(text) != episode_id or len(_SET_DEFAULT_RE.findall(text)) != 1:
+        return None
+    return text
+
+
+def _with_coop(text):
+    """text with every one-player mode outside COOP_SKIPPED_EPISODES opened to two."""
+    parts, last = [], 0
+    for episode_id, start, end in _episodes(text):
+        if episode_id in COOP_SKIPPED_EPISODES:
+            continue
+        block = _ONE_PLAYER_RE.sub(
+            lambda m: f'{m.group(1)}"GameMode_TwoPlayer"{m.group(2)}{_COOP_MARK}', text[start:end])
+        parts += [text[last:start], block]
+        last = end
+    return "".join(parts) + text[last:]
+
+
+def _write_gameflow(start_episode, coop):
+    """Rebuilds the gameflow file from the original. Returns (ok, error)."""
+    lua, backup, original = _original_gameflow()
+    if lua is None:
+        return False, "game data not installed"
+    if len(_SET_DEFAULT_RE.findall(original)) != 1 or _start_episode_of(original) is None:
+        return False, "unexpected simpsons_gameflow.lua (expected one episode:SetDefault())"
+    if start_episode not in {e for e, _, _ in _episodes(original)}:
+        return False, f"unknown episode {start_episode!r}"
+    text = _with_start_episode(original, start_episode)
+    if text is None:
         return False, "could not move the start episode"
+    if coop:
+        text = _with_coop(text)
+        if not _coop_of(text):
+            return False, "could not open Springfield to two players"
+    elif _coop_of(text):
+        return False, "this simpsons_gameflow.lua already allows two players (a mod?)"
+    tmp = lua.with_name(lua.name + ".tmp")
+    if text == original:
+        if backup.is_file():
+            tmp.write_text(original, encoding="utf-8", newline="")
+            os.replace(tmp, lua)
+            backup.unlink()
+        return True, None
     if not backup.is_file():
         backup.write_text(original, encoding="utf-8", newline="")
-    tmp = lua.with_name(lua.name + ".tmp")
     tmp.write_text(text, encoding="utf-8", newline="")
     os.replace(tmp, lua)
-    return True, f"new games start in {name}"
+    return True, None
+
+
+def _gameflow_state():
+    """(start episode, co-op on) of the current file, or (None, None)."""
+    lua, _ = _gameflow_files()
+    if lua is None:
+        return None, None
+    text = _read_lua(lua)
+    return _start_episode_of(text), _coop_of(text)
+
+
+def start_episode_state():
+    start, _ = _gameflow_state()
+    return start or "unavailable"
+
+
+def start_episode_options():
+    _, _, original = _original_gameflow()
+    if original is None:
+        return []
+    return [{"id": e, "name": EPISODE_NAMES.get(e, e.replace("_", " ").title())}
+            for e, _, _ in _episodes(original)]
+
+
+def set_start_episode(episode_id):
+    start, coop = _gameflow_state()
+    if start is None:
+        return False, "game data not installed"
+    ok, error = _write_gameflow(episode_id, coop)
+    if not ok:
+        return False, error
+    return True, f"new games start in {EPISODE_NAMES.get(episode_id, episode_id)}"
+
+
+def coop_state():
+    start, coop = _gameflow_state()
+    if start is None:
+        return "unavailable"
+    return "on" if coop else "off"
+
+
+def set_coop(enable):
+    start, _ = _gameflow_state()
+    if start is None:
+        return False, "game data not installed"
+    ok, error = _write_gameflow(start, enable)
+    if not ok:
+        return False, error
+    return True, ("a second player can join in Springfield and the timed challenges" if enable
+                  else "Springfield and the timed challenges are one player again")
 
 
 def _toml_flag(key, default="false"):
@@ -638,6 +725,13 @@ def patches_list():
                  "starts; choose Land of Chocolate to go back to the original game.",
          "state": start_episode_state(), "available": start_episode_state() != "unavailable",
          "options": start_episode_options()},
+        {"id": "coop_everywhere", "name": "Co-op in Springfield and the challenges",
+         "desc": "Lets a second controller join with START in Springfield and the timed "
+                 "challenges, as in the story episodes; the original game allows one player "
+                 "there. Player 2 takes over the level's second character, and the character "
+                 "select can change both. Not in Land of Chocolate, where Homer is alone. Takes "
+                 "effect the next time the game starts.",
+         "state": coop_state(), "available": coop_state() != "unavailable"},
         {"id": "fps_unlock", "name": "60 FPS mode",
          "desc": "Runs the game at 60 Hz instead of the original 30. Set it in "
                  "Settings → FRAMERATE. Experimental: cutscenes/physics may misbehave.",
@@ -2204,6 +2298,9 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 return self._send(200, {"ok": ok, "msg": msg})
             if body.get("id") == "start_episode":
                 ok, msg = set_start_episode(str(body.get("value", "")))
+                return self._send(200, {"ok": ok, "msg": msg})
+            if body.get("id") == "coop_everywhere":
+                ok, msg = set_coop(bool(body.get("enable")))
                 return self._send(200, {"ok": ok, "msg": msg})
             return self._send(404, {"ok": False, "msg": "unknown patch"})
         if path == "/api/diagnostics":
