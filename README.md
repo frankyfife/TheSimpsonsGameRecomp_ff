@@ -44,7 +44,8 @@ not contain this fork's changes.
 
 What it adds to the original project:
 
-- **Free camera and photo mode** in every level, with a controller or the keyboard.
+- **Free camera and photo mode** in every level, with a controller or the keyboard, and bringing
+  the players to where the camera is.
 - **Ink outlines to taste:** the game's hard black outlines can be softened, recoloured or turned
   off.
 - **Clean eyes:** no more speckled dark shadow on the characters' eye whites.
@@ -75,6 +76,7 @@ not in menus or videos.
 |---|---|---|
 | Free camera on/off | L3 + R3 (press both sticks) | F6 |
 | Photo mode on/off | Y (with the free camera on) | F8 (also frees the camera) |
+| Bring the players here (ends the free camera) | B (with the free camera on) | F9 |
 | Move along the view | Left stick | W A S D |
 | Look around | Right stick | Arrow keys |
 | Down, up | Left trigger, right trigger | Q, E |
@@ -82,7 +84,13 @@ not in menus or videos.
 | Reset the zoom | Tap R3 | 2 |
 | Faster, slower (hold) | A, X | Shift, Ctrl |
 
-F6 and F8 can be changed in the launcher's **Keyboard & mouse** section, with the other overlay
+**Bring the players here** puts both players' characters where the camera is, player 2 a metre
+beside player 1, and hands back to the gameplay camera: fly somewhere, press B, and play on from
+there. The characters fall to the ground from the camera's height as after a jump, so bring them
+to a spot above solid ground. Tried in the house and outdoors in Springfield. Code:
+`simpsons/src/teleport.cpp`.
+
+F6, F8 and F9 can be changed in the launcher's **Keyboard & mouse** section, with the other overlay
 keys. In `simpsons.toml`, `freecam_speed` sets the speed in metres per second (5 by default),
 `freecam_hide_hud` whether the photo mode hides the HUD, and `freecam_game_follows` whether the
 game streams, culls and hears from the free camera. The controller controls have been checked in
@@ -269,6 +277,7 @@ original project's `main`:
 | [`coop-everywhere`](https://github.com/frankyfife/TheSimpsonsGameRecomp_ff/tree/coop-everywhere) | Co-op in Springfield and the challenges, the character menu for both controllers, a second injected controller for tests (based on `main`: it builds on the start episode and the character select) |
 | [`fix-start-episode-progress`](https://github.com/frankyfife/TheSimpsonsGameRecomp_ff/tree/fix-start-episode-progress) | Start episode with the progress of the episodes before it (based on `main`) |
 | [`fix-hint-text`](https://github.com/frankyfife/TheSimpsonsGameRecomp_ff/tree/fix-hint-text) | Empty tutorial hints (based on `main`, as its tick hook is in `freecam.cpp`) |
+| [`freecam-teleport`](https://github.com/frankyfife/TheSimpsonsGameRecomp_ff/tree/freecam-teleport) | Bring the players to the free camera (based on `main`) |
 
 ## Status
 

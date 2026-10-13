@@ -318,6 +318,7 @@ SETTINGS_SCHEMA = {
         "bind_console": "Backtick",
         "bind_freecam": "F6",
         "bind_photo_mode": "F8",
+        "bind_freecam_teleport": "F9",
         "bind_characters": "F7",
     }.items()},
     # Characters for players 1 and 2 (simpsons/src/character_select.cpp): a
