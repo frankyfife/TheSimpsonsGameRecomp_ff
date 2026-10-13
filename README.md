@@ -127,6 +127,16 @@ The launcher changes `gamedata/simpsons_gameflow.lua` for this and keeps the unt
 `simpsons_gameflow.lua.original`. Choosing Land of Chocolate again restores the original file byte
 for byte. Starting this way has been tried with Springfield and The Day the Earth Stood Stupid.
 
+The game keeps the story's progress in scores: an episode counts as complete, and unlocks the next
+ones, through `SCORE_..._COMPLETE`. As the chosen episode starts, the patch runs the game's own
+episode cheat (`SCORE_EVENT_<episode>_CHEAT`), which marks every episode before it complete, so a
+new game has the progress it would have had (checked in the save: Land of Chocolate complete and
+Springfield unlocked when starting in Springfield).
+
+Starting in Springfield, the house's first tutorial keeps the front door shut until you switch
+characters with **D-pad left**; its hint cloud stays empty. After the switch the hint "New episode
+available" appears and the door opens.
+
 ### Character select
 
 The launcher's **Settings** tab has a **Characters** section that sets who plays as player 1 and
