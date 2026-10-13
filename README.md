@@ -261,6 +261,7 @@ original project's `main`:
 | [`character-select`](https://github.com/frankyfife/TheSimpsonsGameRecomp_ff/tree/character-select) | Character select (based on `freecam`, whose controller hook it shares) |
 | [`launcher-collapsible-settings`](https://github.com/frankyfife/TheSimpsonsGameRecomp_ff/tree/launcher-collapsible-settings) | Launcher settings that fold |
 | [`coop-everywhere`](https://github.com/frankyfife/TheSimpsonsGameRecomp_ff/tree/coop-everywhere) | Co-op in Springfield and the challenges, the character menu for both controllers, a second injected controller for tests (based on `main`: it builds on the start episode and the character select) |
+| [`fix-start-episode-progress`](https://github.com/frankyfife/TheSimpsonsGameRecomp_ff/tree/fix-start-episode-progress) | Start episode with the progress of the episodes before it (based on `main`) |
 
 ## Status
 
