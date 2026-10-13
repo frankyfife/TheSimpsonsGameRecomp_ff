@@ -497,7 +497,8 @@ def patch_skip_intro(enable):
 #
 # Start episode: the game starts a new game in the episode whose block calls
 # episode:SetDefault() (Land of Chocolate). Moving that call makes new games
-# start elsewhere; games in progress keep their own progress.
+# start elsewhere, and the game's episode cheat, run as the episode starts,
+# marks the episodes before it complete.
 #
 # Co-op: each mode says how many players it allows (NewMode's numPlayers).
 # The story episodes allow two, Springfield and the timed challenges one;
@@ -576,6 +577,24 @@ def _coop_of(text):
     return False
 
 
+def _start_progress_events(episode_id):
+    """(the score event the episode starts with, the cheat event to chain to it).
+
+    The game tracks progress in scores (simpsons_scores.lua): an episode's
+    SCORE_..._COMPLETE unlocks the next ones, and the hubs' scripts follow
+    them (a new game started in Springfield could not leave the house). Its
+    episode cheat, SCORE_EVENT_<episode>_CHEAT, marks every episode before
+    that one complete; chained to the start of the chosen episode it gives a
+    new game the progress it would have had. Springfield has no cheat of its
+    own: the one for Bartman Begins, the episode it unlocks, marks Land of
+    Chocolate complete. Both hubs start with SCORE_EVENT_RESTART_GAME_TIME."""
+    if episode_id == "SPR_HUB":
+        return "SCORE_EVENT_RESTART_GAME_TIME", "SCORE_EVENT_BARTMAN_BEGINS_CHEAT"
+    if episode_id == "GAME_HUB":
+        return "SCORE_EVENT_RESTART_GAME_TIME", "SCORE_EVENT_GAME_HUB_CHEAT"
+    return f"SCORE_EVENT_{episode_id}_START", f"SCORE_EVENT_{episode_id}_CHEAT"
+
+
 def _with_start_episode(original, episode_id):
     """The original text with new games starting in episode_id, or None."""
     if episode_id == _start_episode_of(original):
@@ -588,8 +607,16 @@ def _with_start_episode(original, episode_id):
         + "  -- start episode moved by the launcher", original, count=1)
     match = next(m for m in _EPISODE_RE.finditer(text) if m.group(2) == episode_id)
     line_end = text.index(newline, match.end()) + len(newline)
-    text = (text[:line_end] + f"{match.group(1)}episode:SetDefault()  -- start episode chosen in the launcher"
-            + newline + text[line_end:])
+    indent = match.group(1)
+    trigger, cheat = _start_progress_events(episode_id)
+    lines = [f"episode:SetDefault()  -- start episode chosen in the launcher",
+             "-- the episodes before it count as done, as with the game's episode cheat",
+             "local launcherStart = ScoreKeeper ~= nil and ScoreKeeper:GetScoreKeeper() or nil",
+             f'launcherStart = launcherStart and launcherStart:FindEvent("{trigger}")',
+             "if launcherStart ~= nil then",
+             f'\tlauncherStart:AddEventOp("{cheat}")',
+             "end"]
+    text = text[:line_end] + "".join(indent + l + newline for l in lines) + text[line_end:]
     if _start_episode_of(text) != episode_id or len(_SET_DEFAULT_RE.findall(text)) != 1:
         return None
     return text
