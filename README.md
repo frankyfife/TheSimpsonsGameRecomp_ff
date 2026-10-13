@@ -153,9 +153,17 @@ episode costumes (Medal of Homer, NeverQuest, Big Super Happy Fun Fun, Grand The
 Thy Player, The Colossal Donut), or at an earlier power stage of the story, or the level's own
 character. In game, **F7**, or **Y** while either player's pause menu is open, opens the same
 choice over the game (D-pad or arrow keys to choose, A or Enter to confirm, B or Esc to close; in
-co-op either controller can); confirming
-restarts from the last checkpoint with the new characters, which loses the progress since then,
-as a death does. The settings are `character_player1` and `character_player2` in `simpsons.toml`.
+co-op either controller can); confirming restarts from the last checkpoint with the new
+characters, which loses the progress since then, as a death does. The settings are
+`character_player1` and `character_player2` in `simpsons.toml`.
+
+In Springfield the restart takes you back into the Simpsons' house: Springfield has no checkpoints
+outdoors. There the game's own bus stops are the way to switch characters (and to travel); its
+wardrobe in the house changes costumes but also reloads at the checkpoint. To get back to where
+you were, fly there with the free camera and bring the players there with **B**. Keeping the
+position through the restart itself was tried: put back at a kept position, the players landed
+outdoors with only the house loaded, and reloading the whole map made Springfield take them back
+into the house.
 
 It is meant for fun and exploring. The levels are scripted for their own characters: with others,
 story triggers, objectives and cutscenes may not fire, the level's tutorial hints still name the
