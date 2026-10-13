@@ -24,11 +24,14 @@
 // keyboard's virtual pad is muted through the overlay-input lock, and the
 // camera reads the keyboard from the window instead.
 //
-// Controller: L3+R3 free camera on/off, Y photo mode; left stick move, right
-// stick look, triggers down/up, LB/RB zoom out/in, R3 resets the zoom, A
-// faster, X slower. Keyboard: F6 free camera, F8 photo mode; WASD move, arrows
-// look, Q/E down/up, 1/3 zoom out/in, 2 resets the zoom, Shift faster, Ctrl
-// slower.
+// B (F9) brings the players' characters to the free camera and ends it
+// (teleport.cpp), so the players go on from where the camera flew to.
+//
+// Controller: L3+R3 free camera on/off, Y photo mode, B bring the players
+// here; left stick move, right stick look, triggers down/up, LB/RB zoom
+// out/in, R3 resets the zoom, A faster, X slower. Keyboard: F6 free camera, F8
+// photo mode, F9 bring the players here; WASD move, arrows look, Q/E down/up,
+// 1/3 zoom out/in, 2 resets the zoom, Shift faster, Ctrl slower.
 
 #include <algorithm>
 #include <array>
@@ -102,6 +105,7 @@ constexpr uint16_t kPadR3 = 0x0080;
 constexpr uint16_t kPadLB = 0x0100;
 constexpr uint16_t kPadRB = 0x0200;
 constexpr uint16_t kPadA = 0x1000;
+constexpr uint16_t kPadB = 0x2000;
 constexpr uint16_t kPadX = 0x4000;
 constexpr uint16_t kPadY = 0x8000;
 
@@ -163,6 +167,7 @@ int64_t NowNs() {
 std::atomic<bool> g_want_freecam{false};
 std::atomic<bool> g_want_photo{false};
 std::atomic<bool> g_reset_fov{false};
+std::atomic<bool> g_want_teleport{false};
 // Game-thread state, published for the frame pacing, the HUD draw and the
 // UI-thread toggles.
 std::atomic<bool> g_applied{false};
@@ -403,6 +408,9 @@ FreecamKeys g_key_listener;
 
 bool FreecamWorldFrozen() { return g_frozen.load(std::memory_order_relaxed); }
 
+// teleport.cpp: moves the players' characters there; returns how many.
+int TeleportPlayers(uint8_t* base, const float position[3]);
+
 void InitFreecam(rex::ui::Window* window) {
   if (window) {
     window->AddInputListener(&g_key_listener, 32);
@@ -419,11 +427,23 @@ void InitFreecam(rex::ui::Window* window) {
                             TogglePhoto();
                           }
                         });
+  rex::ui::RegisterBind("bind_freecam_teleport", "F9",
+                        "Bring the players to the free camera (and end it)", [] {
+                          if (g_key_repeat.load()) {
+                            return;
+                          }
+                          if (g_want_freecam.load()) {
+                            g_want_teleport = true;
+                          } else {
+                            REXLOG_INFO("[freecam] bring the players here: the free camera is off");
+                          }
+                        });
 }
 
 void ShutdownFreecam(rex::ui::Window* window) {
   rex::ui::UnregisterBind("bind_freecam");
   rex::ui::UnregisterBind("bind_photo_mode");
+  rex::ui::UnregisterBind("bind_freecam_teleport");
   if (window) {
     window->RemoveInputListener(&g_key_listener);
     window->RemoveListener(&g_key_listener);
@@ -456,6 +476,12 @@ REX_FUNC(sub_8269D8F8) {
     ctx.r3.u64 = manager;
     __imp__sub_8269D8F8(ctx, base);
     return;
+  }
+  if (g_want_teleport.exchange(false)) {
+    if (TeleportPlayers(base, g_cam.position) > 0) {
+      g_want_freecam = false;  // back to the gameplay camera on the next tick
+      g_want_photo = false;
+    }
   }
   const float dt = std::clamp(float(now - g_cam.last_ns) * 1e-9f, 0.0f, 0.1f);
   g_cam.last_ns = now;
@@ -521,6 +547,9 @@ REX_FUNC(sub_82B766A8) {
     }
     if ((pressed & kPadY) && g_applied) {
       TogglePhoto();
+    }
+    if ((pressed & kPadB) && g_applied) {
+      g_want_teleport = true;
     }
     g_pad = pad;
     if (g_hold_until_neutral && !g_applied && pad.buttons == 0 && pad.lt < 30 && pad.rt < 30 &&
