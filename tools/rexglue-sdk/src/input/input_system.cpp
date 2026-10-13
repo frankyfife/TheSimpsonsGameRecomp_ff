@@ -32,22 +32,35 @@ REXCVAR_DEFINE_STRING(input_backend, "sdl", "Input", "Input backend: sdl, xinput
 
 REXCVAR_DEFINE_BOOL(guide_button, false, "Input", "Enable guide button pass-through");
 REXCVAR_DEFINE_STRING(input_inject_file, "", "Input",
-                      "Test automation: file polled for injected player 1 controller input, "
-                      "one command per write: '<control> <hold_seconds>'");
+                      "Test automation: file polled for injected controller input, one command "
+                      "per write: '<control> <hold_seconds> [pad]', pad 1 (default) or 2");
 namespace rex::input {
 
 namespace {
 
 // Injected controller input for unattended test runs. The harness writes a
 // command such as "A 0.15" to the file; it is consumed on the next poll and
-// the control is held for that long.
+// the control is held for that long on player 1's pad, or on player 2's with
+// a third field "2". Player 1's pad is connected while injection is on,
+// player 2's from its first command.
 class InputInjector {
  public:
+  static constexpr uint32_t kPads = 2;
+
   bool enabled() const { return !REXCVAR_GET(input_inject_file).empty(); }
 
-  // Adds the active injected control to the state; returns true if enabled.
-  bool Apply(X_INPUT_STATE& state) {
-    if (!enabled()) {
+  bool connected(uint32_t user_index) {
+    if (!enabled() || user_index >= kPads) {
+      return false;
+    }
+    std::lock_guard<std::mutex> lock(mutex_);
+    return user_index == 0 || pads_[user_index].seen;
+  }
+
+  // Adds the active injected control to the state; returns true if the pad is
+  // injected.
+  bool Apply(uint32_t user_index, X_INPUT_STATE& state) {
+    if (!enabled() || user_index >= kPads) {
       return false;
     }
     std::lock_guard<std::mutex> lock(mutex_);
@@ -56,25 +69,29 @@ class InputInjector {
       next_poll_ = now + std::chrono::milliseconds(20);
       Poll(now);
     }
+    Pad& pad = pads_[user_index];
+    if (user_index != 0 && !pad.seen) {
+      return false;
+    }
     uint16_t buttons = 0;
     int16_t lx = 0, ly = 0, rx = 0, ry = 0;
     uint8_t lt = 0, rt = 0;
-    if (now < release_at_) {
-      buttons = buttons_;
-      lx = lx_;
-      ly = ly_;
-      rx = rx_;
-      ry = ry_;
-      lt = lt_;
-      rt = rt_;
+    if (now < pad.release_at) {
+      buttons = pad.buttons;
+      lx = pad.lx;
+      ly = pad.ly;
+      rx = pad.rx;
+      ry = pad.ry;
+      lt = pad.lt;
+      rt = pad.rt;
     }
-    if (buttons != last_buttons_ || lx != last_lx_ || ly != last_ly_) {
-      ++packet_;
-      last_buttons_ = buttons;
-      last_lx_ = lx;
-      last_ly_ = ly;
+    if (buttons != pad.last_buttons || lx != pad.last_lx || ly != pad.last_ly) {
+      ++pad.packet;
+      pad.last_buttons = buttons;
+      pad.last_lx = lx;
+      pad.last_ly = ly;
     }
-    state.packet_number = uint32_t(state.packet_number) + packet_;
+    state.packet_number = uint32_t(state.packet_number) + pad.packet;
     state.gamepad.buttons = uint16_t(state.gamepad.buttons) | buttons;
     state.gamepad.left_trigger = std::max(state.gamepad.left_trigger, lt);
     state.gamepad.right_trigger = std::max(state.gamepad.right_trigger, rt);
@@ -90,6 +107,17 @@ class InputInjector {
   }
 
  private:
+  struct Pad {
+    bool seen = false;
+    std::chrono::steady_clock::time_point release_at{};
+    uint16_t buttons = 0;
+    int16_t lx = 0, ly = 0, rx = 0, ry = 0;
+    uint8_t lt = 0, rt = 0;
+    uint16_t last_buttons = 0;
+    int16_t last_lx = 0, last_ly = 0;
+    uint32_t packet = 0;
+  };
+
   void Poll(std::chrono::steady_clock::time_point now) {
     const std::string& path = REXCVAR_GET(input_inject_file);
     FILE* file = std::fopen(path.c_str(), "r");
@@ -98,15 +126,22 @@ class InputInjector {
     }
     char control[32] = {};
     double hold = 0.15;
-    int fields = std::fscanf(file, "%31s %lf", control, &hold);
+    int pad_number = 1;
+    int fields = std::fscanf(file, "%31s %lf %d", control, &hold, &pad_number);
     std::fclose(file);
     std::remove(path.c_str());
     if (fields < 1) {
       return;
     }
-    buttons_ = 0;
-    lx_ = ly_ = rx_ = ry_ = 0;
-    lt_ = rt_ = 0;
+    if (pad_number < 1 || pad_number > int(kPads)) {
+      REXLOG_WARN("input_inject_file: no pad {}", pad_number);
+      return;
+    }
+    Pad& pad = pads_[pad_number - 1];
+    pad.seen = true;
+    pad.buttons = 0;
+    pad.lx = pad.ly = pad.rx = pad.ry = 0;
+    pad.lt = pad.rt = 0;
     // One control, or several joined by '+' and held together (e.g. LS+RS).
     std::string controls(control);
     static const std::pair<const char*, uint16_t> kButtons[] = {
@@ -137,42 +172,36 @@ class InputInjector {
       bool known = false;
       for (const auto& [button_name, mask] : kButtons) {
         if (name == button_name) {
-          buttons_ |= mask;
+          pad.buttons |= mask;
           known = true;
         }
       }
-      if (name == "LT") { lt_ = 0xFF; known = true; }
-      if (name == "RT") { rt_ = 0xFF; known = true; }
-      if (name == "L_UP") { ly_ = kFull; known = true; }
-      if (name == "L_DOWN") { ly_ = -kFull; known = true; }
-      if (name == "L_LEFT") { lx_ = -kFull; known = true; }
-      if (name == "L_RIGHT") { lx_ = kFull; known = true; }
-      if (name == "R_UP") { ry_ = kFull; known = true; }
-      if (name == "R_DOWN") { ry_ = -kFull; known = true; }
-      if (name == "R_LEFT") { rx_ = -kFull; known = true; }
-      if (name == "R_RIGHT") { rx_ = kFull; known = true; }
+      if (name == "LT") { pad.lt = 0xFF; known = true; }
+      if (name == "RT") { pad.rt = 0xFF; known = true; }
+      if (name == "L_UP") { pad.ly = kFull; known = true; }
+      if (name == "L_DOWN") { pad.ly = -kFull; known = true; }
+      if (name == "L_LEFT") { pad.lx = -kFull; known = true; }
+      if (name == "L_RIGHT") { pad.lx = kFull; known = true; }
+      if (name == "R_UP") { pad.ry = kFull; known = true; }
+      if (name == "R_DOWN") { pad.ry = -kFull; known = true; }
+      if (name == "R_LEFT") { pad.rx = -kFull; known = true; }
+      if (name == "R_RIGHT") { pad.rx = kFull; known = true; }
       if (!known) {
         REXLOG_WARN("input_inject_file: unknown control '{}'", name);
-        buttons_ = 0;
-        lx_ = ly_ = rx_ = ry_ = 0;
-        lt_ = rt_ = 0;
+        pad.buttons = 0;
+        pad.lx = pad.ly = pad.rx = pad.ry = 0;
+        pad.lt = pad.rt = 0;
         return;
       }
     }
     const std::string& name = controls;
-    release_at_ = now + std::chrono::microseconds(int64_t(hold * 1e6));
-    REXLOG_INFO("input_inject_file: {} for {:.2f}s", name, hold);
+    pad.release_at = now + std::chrono::microseconds(int64_t(hold * 1e6));
+    REXLOG_INFO("input_inject_file: {} for {:.2f}s on pad {}", name, hold, pad_number);
   }
 
   std::mutex mutex_;
   std::chrono::steady_clock::time_point next_poll_{};
-  std::chrono::steady_clock::time_point release_at_{};
-  uint16_t buttons_ = 0;
-  int16_t lx_ = 0, ly_ = 0, rx_ = 0, ry_ = 0;
-  uint8_t lt_ = 0, rt_ = 0;
-  uint16_t last_buttons_ = 0;
-  int16_t last_lx_ = 0, last_ly_ = 0;
-  uint32_t packet_ = 0;
+  Pad pads_[kPads];
 };
 
 InputInjector g_input_injector;
@@ -238,7 +267,7 @@ X_RESULT InputSystem::GetCapabilities(uint32_t user_index, uint32_t flags,
       return result;
     }
   }
-  if (user_index == 0 && g_input_injector.enabled()) {
+  if (g_input_injector.connected(user_index)) {
     FillInjectedCapabilities(out_caps);
     return X_ERROR_SUCCESS;
   }
@@ -287,7 +316,7 @@ X_RESULT InputSystem::GetState(uint32_t user_index, X_INPUT_STATE* out_state) {
     }
   }
 
-  if (user_index == 0 && g_input_injector.Apply(merged)) {
+  if (g_input_injector.Apply(user_index, merged)) {
     first_result = false;
   }
 

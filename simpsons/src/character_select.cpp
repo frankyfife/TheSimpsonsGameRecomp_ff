@@ -24,10 +24,12 @@
 // which matches the GUIDs the game's Lua uses (Lisa in Grand Theft Scratchy,
 // Bart and Homer in Medal of Homer).
 //
-// The in-game menu opens with F7, or with Y while the game's pause menu is
-// open (the controller is read in freecam.cpp's XInputGetState hook). It
-// pauses the level while open. Confirming closes the pause menu (an injected
-// B) and restarts from the last checkpoint once the level runs again, through
+// The in-game menu opens with F7, or with Y on either player's controller
+// while the game's pause menu is open (the controllers are read in
+// freecam.cpp's XInputGetState hook); either controller then drives it. It
+// pauses the level while open. Confirming closes the pause menu (a B injected
+// on the controller whose START opened it: in co-op each player has their
+// own) and restarts from the last checkpoint once the level runs again, through
 // sub_8289BEA8, which the pause menu's restart and a death also end in, with
 // the GameFlowManager's restart-pending flag set first as they do. The restart
 // restores the snapshot the last checkpoint took, so progress since then is
@@ -190,6 +192,7 @@ constexpr uint32_t kUiPauseCount = 0x82D57368;   // the pause menu and other UI 
 
 // XInput buttons.
 constexpr uint16_t kPadUp = 0x0001, kPadDown = 0x0002, kPadLeft = 0x0004, kPadRight = 0x0008;
+constexpr uint16_t kPadStart = 0x0010;
 constexpr uint16_t kPadA = 0x1000, kPadB = 0x2000, kPadY = 0x8000;
 
 // Host address of guest memory as the generated code computes it
@@ -264,8 +267,11 @@ struct Menu {
 };
 Menu g_menu;
 
+constexpr uint32_t kPads = 2;  // the players' controllers, XInput users 0 and 1
+
 std::atomic<bool> g_restart_requested{false};
-std::atomic<int> g_inject_b{0};  // polls left to send B to the game's pause menu
+std::atomic<int> g_inject_b[kPads] = {};  // polls left to send B to the game's pause menu
+std::atomic<uint32_t> g_pause_owner{0};   // the controller whose START opened it
 std::atomic<bool> g_level_ready{false};
 std::atomic<bool> g_pause_menu_open{false};
 bool g_menu_pause_held = false;  // game thread only
@@ -409,7 +415,7 @@ void ConfirmLocked() {
               changed ? ", restarting from the last checkpoint" : ", restarting anyway");
   CloseMenuLocked();
   if (!g_menu.paused_level) {
-    g_inject_b = 6;  // leave the game's pause menu: B down, then up
+    g_inject_b[g_pause_owner.load()] = 6;  // leave the game's pause menu: B down, then up
   }
   g_restart_requested = true;
 }
@@ -531,17 +537,23 @@ void ShutdownCharacterMenu() {
   g_dialog.reset();
 }
 
-// Called by freecam.cpp's XInputGetState hook for player 1. Returns true when
-// the menu takes the pad; *game_buttons is then what the game gets (sticks
-// and triggers at rest).
-bool CharacterMenuPad(uint16_t buttons, uint16_t* game_buttons) {
-  static uint16_t last = 0;
-  const uint16_t pressed = buttons & ~last;
-  last = buttons;
-  if (const int inject = g_inject_b.load(); inject > 0) {
-    g_inject_b = inject - 1;
+// Called by freecam.cpp's XInputGetState hook for players 1 and 2 (user 0,
+// 1). Returns true when the menu takes the pad; *game_buttons is then what
+// the game gets (sticks and triggers at rest).
+bool CharacterMenuPad(uint32_t user, uint16_t buttons, uint16_t* game_buttons) {
+  if (user >= kPads) {
+    return false;
+  }
+  static uint16_t last[kPads] = {};
+  const uint16_t pressed = buttons & ~last[user];
+  last[user] = buttons;
+  if (const int inject = g_inject_b[user].load(); inject > 0) {
+    g_inject_b[user] = inject - 1;
     *game_buttons = inject > 3 ? kPadB : 0;
     return true;
+  }
+  if ((pressed & kPadStart) && !g_pause_menu_open.load()) {
+    g_pause_owner = user;
   }
   std::lock_guard lock(g_mutex);
   if (!g_menu.open) {
