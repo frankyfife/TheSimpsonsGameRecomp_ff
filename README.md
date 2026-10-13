@@ -58,8 +58,8 @@ What it adds to the original project:
 - **Fixes:** short sound effects cut off or starting with a fragment of another sound, the game
   hanging at startup without an audio output device, the game running 7.5% fast on Windows, the
   game's timers running at 64% of their rate on Windows, even physics steps at 60 FPS, choppy,
-  slowed-down sound on some Windows PCs, the menus' frame rate on Windows, and the skip-intro patch
-  on releases that are not in English.
+  slowed-down sound on some Windows PCs, the menus' frame rate on Windows, the skip-intro patch
+  on releases that are not in English, and tutorial hints that showed an empty cloud.
 
 The changes were developed and checked on Windows 11. They build for Linux too but have not been
 tried there.
@@ -134,8 +134,8 @@ new game has the progress it would have had (checked in the save: Land of Chocol
 Springfield unlocked when starting in Springfield).
 
 Starting in Springfield, the house's first tutorial keeps the front door shut until you switch
-characters with **D-pad left**; its hint cloud stays empty. After the switch the hint "New episode
-available" appears and the door opens.
+characters with **D-pad left**, as its hint says (see *Empty tutorial hints* under Fixes for why
+the hint used to be empty).
 
 ### Character select
 
@@ -182,6 +182,12 @@ challenges not yet.
 
 ### Fixes
 
+- **Empty tutorial hints.** A level's tutorial hint looks its text up when it is shown. Starting a
+  new game in Springfield, the house's first hint ("You have unlocked Bart! Press D-pad left to
+  switch characters", which opens the front door) fired about a second before the level ran,
+  while 2 of the 44 text tables were loaded; the lookup failed and the cloud stayed empty. A hint
+  whose text is not loaded yet is now held back until it is (`simpsons/src/hint_text.cpp`); one
+  whose text never appears still shows after 5 seconds, empty as before.
 - **Game speed on Windows.** The game measures every frame with a millisecond tick count, which
   the runtime copies from its clock with a 1 ms timer. On Windows that timer only runs as often as
   the system timer lets it; with the default 15.6 ms the tick count moved in 15.6 ms steps, the
@@ -262,6 +268,7 @@ original project's `main`:
 | [`launcher-collapsible-settings`](https://github.com/frankyfife/TheSimpsonsGameRecomp_ff/tree/launcher-collapsible-settings) | Launcher settings that fold |
 | [`coop-everywhere`](https://github.com/frankyfife/TheSimpsonsGameRecomp_ff/tree/coop-everywhere) | Co-op in Springfield and the challenges, the character menu for both controllers, a second injected controller for tests (based on `main`: it builds on the start episode and the character select) |
 | [`fix-start-episode-progress`](https://github.com/frankyfife/TheSimpsonsGameRecomp_ff/tree/fix-start-episode-progress) | Start episode with the progress of the episodes before it (based on `main`) |
+| [`fix-hint-text`](https://github.com/frankyfife/TheSimpsonsGameRecomp_ff/tree/fix-hint-text) | Empty tutorial hints (based on `main`, as its tick hook is in `freecam.cpp`) |
 
 ## Status
 
