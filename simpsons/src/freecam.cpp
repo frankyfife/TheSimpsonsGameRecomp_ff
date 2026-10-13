@@ -541,9 +541,12 @@ REX_FUNC(sub_82B766A8) {
 
 // character_select.cpp: a restart it asked for, on the game thread.
 void CharacterSelectTick(PPCContext& ctx, uint8_t* base);
+// hint_text.cpp: a hint held back until its text is loaded.
+void HintTextTick(PPCContext& ctx, uint8_t* base);
 
 REX_FUNC(sub_82691540) {
   CharacterSelectTick(ctx, base);
+  HintTextTick(ctx, base);
   const bool want = g_want_photo.load() && g_applied.load() &&
                     LoadBE32(base, kCameraManager) != 0 && LoadBE32(base, kSimEnabled) != 0;
   if (want != g_frozen.load()) {

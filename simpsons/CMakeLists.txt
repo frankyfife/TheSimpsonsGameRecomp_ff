@@ -26,6 +26,7 @@ set(SIMPSONS_SOURCES
     src/eye_shading.cpp
     src/frame_pacing.cpp
     src/freecam.cpp
+    src/hint_text.cpp
     src/ink_outlines.cpp
     src/physics_step.cpp
     src/ring_wait.cpp
