@@ -182,4 +182,118 @@ dem Log sichern. Nach Laden oder Menü die erste 5-s-Zeile verwerfen.
 | G | B mit `tick_count_precise = false` | Zeigt `game clock` deutlich über 1,00× (Fork damals 1,075×), bleibt er nötig. Bei ≈1,00× reicht nach upstreams Timer-Fix bereits die Kernel-Kopie |
 | H | Schaden in allen Läufen | Die Zeilen `hazards … TouchDetectorHurt n` pro Sekunde sollten in A–D gleich sein. Steigt der Wert bei D, hängt der Schaden an der Bildrate und nicht an den Physikschritten |
 
-<!-- Abschnitte 2 und 3 folgen -->
+---
+
+## 2. D3D11-Renderer
+
+Vorweg: Der Fork-`main` enthält **kein D3D11**. `gpu` kennt dort nur `vulkan` und `d3d12`
+(`tools/rexglue-sdk/src/graphics/flags.cpp:56-59`). Ein `gpu = "d3d11"` in der
+Fork-Config ergibt stillschweigend Vulkan. Für einen Test braucht es upstreams Release
+0.0.6.5 oder den Abgleich (Aufgabe 3) und einen Build mit `-DREXGLUE_USE_D3D11=ON`.
+Der Standard ist OFF, der Release-Workflow schaltet es ein.
+
+### 2.1 Reifegrad
+
+- **Selbstauskunft** (`simpsons/re/d3d11_renderer.md:10-14`, `.github/release-notes.md`):
+  experimentell. Bisher lief er nur unter Proton/DXVK auf dem Steam Deck, **nie auf
+  echten Windows-Treibern**, und ist bei höherer Skalierung langsamer als Vulkan.
+- **Implementiert:**
+  - Draws, Copies, Swaps
+  - Render-Target-Ownership und skalierte Resolves
+  - Textur-Cache, einschließlich 565/5551/4444, Mip-Tails und Volumes
+  - Gamma-Tabelle und PWL-Gamma
+  - FXAA, CAS, FSR1
+  - ImGui-Drawer
+- **Live getestet** (nur Proton): Boot, Intro-Videos, Menüs, Spielstände, Springfield bei
+  1x und 2x.
+- **Offene Punkte laut upstream** (`d3d11_renderer.md:205-216`):
+  - volles Spiel auf Windows-Treibern, In-Engine-Cutscenes
+  - direkter Resolve ohne EDRAM-Umweg
+  - breitere Texturprüfung
+  - Memexport und tessellierte Draws
+  - EDRAM-Snapshot für Trace-Playback
+  - Resize, Vollbild, Device-Loss
+- **Kein Fallback, das größte Risiko.** Jeder Fehler (Shader, Textur, Resolve) ruft
+  `D3D11CommandProcessor::Fail()` auf (`graphics/d3d11/command_processor.cpp:25-31`),
+  das loggt `Native DX11 rendering stopped: …`. Danach brechen alle Draws, Copies und
+  Swaps ab, und das Bild bleibt stehen oder wird schwarz. Es gibt keinen Rückfall auf
+  D3D12 oder Vulkan, auch nicht beim Start (`ui/rex_app.cpp:398` nimmt d3d11 davon aus).
+- **Bekannte harte Grenzen im Code:**
+  - dynamisch indizierte Ressourcen (`shader_bytecode.cpp:404`)
+  - Resolve aus einem Target in Originalauflösung bei Skalierung > 1
+    (`render_target_cache.cpp:441`, `return Fail(…)`)
+  - Ownership-Transfer zwischen Skalierungen (`:226`)
+  - nicht unterstützte Texturformate (`texture_cache.cpp:630`)
+- **`resolution_scale = 3`:** Der Code lässt höchstens 3 zu
+  (`render_target_cache.cpp:49-50`), getestet sind aber nur 1x und 2x. Jeder Resolve geht
+  weiter über EDRAM-Encode, Copy und einen zusätzlichen Downsample. Der
+  Native-Texture-Pfad (`66bb08c0`) gilt nur für 1x-MSAA-Targets in 8888 bzw. 2_10_10_10.
+  Skalierte Resolve-Puffer werden 9-mal so groß (max. 512 MB je Region).
+- **Character-Tessellation und Colour Grading (0.0.6.5) gibt es nur auf Vulkan.** Die
+  Cvars liegen ausschließlich in `graphics/vulkan/command_processor.cpp`. Weder D3D11
+  noch D3D12 haben sie.
+- **Shader-Cache:** Gefunden wurde nur ein In-Memory-Cache, kein persistenter und kein
+  vorkompiliertes D3D11-Set. Bei jedem Start ist mit Übersetzungsrucklern zu rechnen
+  (aus dem Code geschlossen).
+- **„Effect blackouts“-Fix (`35d23b0c`):** betrifft die Copy-free-Resolves unter Vulkan.
+  D3D11 führt Copy und Clear synchron aus, der Fehler sollte dort strukturell nicht
+  auftreten.
+
+### 2.2 Versprechen gegenüber D3D12 und Vulkan
+
+- **Zielgruppe** sind GPUs ohne gute Vulkan- oder D3D12-Unterstützung (README: „for older
+  GPUs“). Feature Level 11.0 genügt.
+- **Kein Leistungsversprechen gegenüber D3D12**, es gibt keine einzige Vergleichsmessung.
+  Gegenüber Vulkan ist er ausdrücklich langsamer bei höherer Skalierung (auch als
+  Launcher-Hinweis).
+- **Einzige Zahlen** (Deck, Proton, Springfield, `d3d11_renderer.md:95-118`):
+  - 1x: 17,8–18,1 ms
+  - 2x: 44,2 ms (22,6 FPS), Vulkan auf dem Deck bei 2x etwa 59 FPS
+  - Größte Posten bei 2x: Resolves (~11 ms) und Dekodierung (~8 ms)
+- Zu CPU-Last auf dem Desktop, zu Windows-Treibern und zur Kompatibilität gibt es
+  **keine Angaben**.
+
+### 2.3 Verträglichkeit mit den Fork-Funktionen
+
+| Funktion | Abhängig vom Renderer? | Bemerkung |
+|---|---|---|
+| `ink_outlines.cpp`, `eye_shading.cpp` | nein | Sie patchen Shader-Mikrocode und Daten im geladenen Gast-Image (`TranslateVirtual`, `heap->Protect`). Jeder Renderer übersetzt danach. Upstream führt beide (umgebaut auf `image_patch.h`). **Restrisiko:** Ob die gepatchten Varianten durch den D3D11-Übersetzer gehen, ist ungeprüft. Ein Fehlschlag hieße wegen des fehlenden Fallbacks Render-Stopp. |
+| `draw_telemetry.cpp` | nein | Hookt die PM4-Draw-Emitter des Gastes, nicht den Command-Processor. |
+| `freecam.cpp`, Teleport, `hint_text.cpp` | nein | Nur Fenster, Eingabe und Gast-Hooks. |
+| `ring_wait.cpp` | nein | Nutzt den Basis-`CommandProcessor`, D3D11 erbt davon. |
+| Screenshots (`--trace_gpu_prefix`, `.shot`) | generisch | `GraphicsSystem` ruft `presenter->CaptureGuestOutput`, und `D3D11Presenter` implementiert das (`d3d11_presenter.cpp:229-262`). Sollte gehen. Frame-Trace-**Wiedergabe** geht mit D3D11 nicht (Snapshot → `Fail`). |
+| ImGui-Overlay (Charaktermenü, Hinweise) | generisch | `ImGuiDrawer` entsteht über `provider->CreateImmediateDrawer()`, D3D11 liefert `D3D11ImmediateDrawer`, UI-Blending ist laut Notizen getestet. Sollte gehen. |
+| SDK-Änderungen des Forks | nein | Betroffen sind nur Audio, XMA, Input, Threading und `windowed_app_main_win.cpp`. Keine D3D12- oder Vulkan-Teile, also braucht es kein D3D11-Gegenstück. |
+
+### 2.4 Lohnt sich ein lokaler Test?
+
+**Nur als Experiment, nicht als Ersatz für D3D12.** Für 4K mit `resolution_scale = 3`
+auf einer aktuellen GPU verspricht D3D11 nichts: Er ist für ältere GPUs gedacht,
+langsamer bei hoher Skalierung, 3x und Windows-Treiber sind ungetestet, und es gibt
+keinen Fallback. Ein Lauf hätte vor allem Wert als **erster Erfahrungsbericht auf echten
+Windows-Treibern**. Wer Leistung oder die neuen Grafikfunktionen (Tessellation,
+Colour Grading) will, sollte eher **Vulkan** testen: upstream empfiehlt es, es spielt die
+Intro-Videos und hat beide Funktionen. D3D12 zeigt laut upstream schwarze Intro-Videos.
+
+**Umschalten:** im Launcher unter Settings → Graphics backend → „Direct3D 11
+(experimental)“ oder mit `gpu = "d3d11"` in `simpsons.toml`. Zurück mit
+`gpu = "d3d12"`.
+
+**Worauf achten:**
+
+1. Im Log nach `Native DX11 rendering stopped:` suchen, das ist die Ursache bei
+   Standbild oder Schwarzbild.
+2. „Shadow resolution“ auf „Match render resolution“ lassen. Mit „Original“
+   (`native_rt_original_resolution_targets = "832:13"`) führt der Shadow-Map-Resolve bei
+   Skalierung > 1 sehr wahrscheinlich in den harten Fehler aus
+   `render_target_cache.cpp:441` (aus dem Code abgeleitet).
+3. Leistung mit `gpu_wait_stats = 1` gegen D3D12 vergleichen (Springfield, Effekt-Combos
+   und Spezialattacken).
+4. Shader-Ruckler beim ersten Auftreten nach jedem Start, besonders bei den gepatchten
+   Augen- und Outline-Shadern.
+5. Resize, Vollbildwechsel, Alt-Tab, In-Engine-Cutscenes.
+6. Charaktermenü (Y), Screenshots, Freecam, Ink- und Augen-Optionen: sehen sie aus wie
+   unter D3D12?
+7. Bei Fehlern `d3d11_debug = true` setzen (braucht die Windows „Graphics Tools“).
+
+<!-- Abschnitt 3 folgt -->
