@@ -2,7 +2,7 @@
 
 Stand 14.10.2026. Verglichen wurden Fork `main` (`a40b3811`) und upstream `main`
 (`4ff637bc`, 0.0.6.5), gemeinsamer Ausgangspunkt `1a18f4a7`. Reine Code- und
-Diff-Analyse: Das Spiel lief dafür nicht, Messungen stehen als Plan in Abschnitt 1.7.
+Diff-Analyse: Das Spiel lief dafür nicht, Messungen stehen als Plan in Abschnitt 1.8.
 
 ## Kurzfassung
 
@@ -22,7 +22,8 @@ Diff-Analyse: Das Spiel lief dafür nicht, Messungen stehen als Plan in Abschnit
 - **Empfehlung:** Beim nächsten Abgleich upstreams Timing komplett übernehmen. Behalten
   muss der Fork dabei nur seine eigenen Ergänzungen außerhalb des Timings
   (siehe Aufgabe 3).
-- **D3D11:** siehe Abschnitt 2.
+- **D3D11:** experimentell, nie auf echten Windows-Treibern getestet, ohne Fallback; für 4K/×3 kein Gewinn zu erwarten (Abschnitt 2).
+- **Abgleich:** machbar, alle Fork-Funktionen bleiben; mit der richtigen Merge-Basis nur 5 echte Konflikte (Abschnitt 3).
 
 ---
 
@@ -115,7 +116,7 @@ sich, als hätte `steady` bisher bei 60 FPS 8,3-ms-Schritte gemacht. Das stimmt 
 **Optionale Verbesserung für beide Stände:** Im `steady`-Modus H **immer** auf 0 setzen,
 nicht nur fraktional. Dann gibt es bei 3 Vblanks 3 × 16,7 statt 2 × 25 ms, sonst ändert
 sich nichts (2 Vblanks: weiter 2 × S, 1 Vblank: weiter 1 × T). Erst nach Messung
-(1.7, Punkt E) entscheiden, ob es sich lohnt. Upstream setzt bei ganzen Raten
+(1.8, Punkt E) entscheiden, ob es sich lohnt. Upstream setzt bei ganzen Raten
 bewusst den Werkswert.
 
 ### 1.5 Frage 3: Tick-Count bei 30/60 FPS
@@ -296,4 +297,106 @@ Intro-Videos und hat beide Funktionen. D3D12 zeigt laut upstream schwarze Intro-
    unter D3D12?
 7. Bei Fehlern `d3d11_debug = true` setzen (braucht die Windows „Graphics Tools“).
 
-<!-- Abschnitt 3 folgt -->
+---
+
+## 3. Abgleich-Plan (Probe-Merge)
+
+Der Probe-Merge lief auf einem lokalen Branch `merge-upstream-0.0.6.5` in einem eigenen
+Worktree der Cloud-Sitzung, ohne Commit und ohne Push. Alle Konflikte ließen sich lösen,
+und alle Fork-Funktionen bleiben erhalten.
+
+### 3.1 Wichtigster Befund: falsche Merge-Basis
+
+Upstreams Import von PR #43 (`3b7773b1`) hat **exakt denselben Tree** wie der
+Fork-Commit `bfa25a93` („Describe the timer resolution fix and the Tree Hugger
+play-through“). Beide haben den Tree `622238a3`. `bfa25a93` liegt in `main`, `3b7773b1`
+aber nicht, und deshalb rechnet git ab `1a18f4a7`. Folgen:
+
+- Standard-Merge (Basis `1a18f4a7`): **16 Konfliktdateien**, die meisten nur doppelte
+  PR-#43-Inhalte.
+- Mit Basis `3b7773b1` (`git merge-tree --merge-base=3b7773b1 main upstream/main`)
+  bleiben **5 echte Konflikte**: `README.md`, `launcher/launcher.py`,
+  `launcher/ui/index.html`, `simpsons/CMakeLists.txt`,
+  `tools/rexglue-sdk/src/input/input_system.cpp`.
+
+**Vorgehen für den echten Abgleich:**
+
+```bash
+git checkout -b merge-upstream-0.0.6.5 main
+git merge -s ours 3b7773b1 -m "Record upstream's import of PR #43 (same tree as bfa25a93)"
+git merge upstream/main          # jetzt mit Basis 3b7773b1: nur noch 5 Konflikte
+```
+
+Der Merge mit `-s ours` ändert keinen Inhalt. Er verbindet nur die Historie, sodass
+spätere Abgleiche ebenfalls sauber rechnen.
+
+### 3.2 Konflikte und Lösungen
+
+Die ersten fünf Zeilen sind die echten Konflikte, der Rest entsteht nur durch die
+falsche Basis.
+
+| Datei | Ursache | Lösung |
+|---|---|---|
+| `README.md` | Upstream hat neu strukturiert und unseren Fork-Abschnitt entfernt. Wir haben Fork-Doku ergänzt. | Upstreams Text übernehmen, unseren Abschnitt „This fork“ behalten (F6–F9-Tasten, Co-op, Charaktere, Hinweise, Teleport). Die Fix-Liste dort um das kürzen, was jetzt upstream ist, und den Abschnitt ins Inhaltsverzeichnis aufnehmen. |
+| `launcher/launcher.py` | Upstream hat `set_start_episode` gehärtet (`patch_lock`, atomares `_write_lua` mit fsync, exklusives Backup, Erkennung fremder Änderungen). Wir haben Co-op und Start-Episoden-Fortschritt ergänzt. | Kombinieren: unser `_write_gameflow` (baut Start-Episode **und** Co-op aus dem Original, Cheat-Event-Kette für den Fortschritt) mit upstreams Härtung. Die Erkennung fremder Änderungen vergleicht mit dem erzeugten Text für (Episode, Co-op). Patch-Liste: `coop_everywhere` und upstreams „Frame rate“. Upstreams Test `tools/bench/launcher_patch_check.py`: 13/13 OK. |
+| `launcher/ui/index.html` | Upstream: `frame_rate`/`menu_frame_rate` (mit Migration von `video_mode_refresh_rate`), `gpu` inkl. d3d11, Tessellation, Colour-Grading-Presets, FXAA-Hinweis. Wir: Characters-Sektion, `bind_characters` (F7), `bind_freecam_teleport` (F9), klappbare Karten (`makeSettingsCollapsible`, „Expand/Collapse all“). | Beides übernehmen. `node --check` OK, keine doppelten IDs. |
+| `simpsons/CMakeLists.txt` | Neue Quellen auf beiden Seiten | Vereinigung: `audio`, `crt_native`, `game_clock` (upstream) und `character_select`, `hint_text`, `teleport` (Fork). |
+| `tools/rexglue-sdk/src/input/input_system.cpp` | Wir: zweites Pad (`Pad pads_[2]`, Co-op-Injection). Upstream: Paketzähler reagiert auch auf rx/ry/lt/rt, clang-format. | Unsere Pad-Struktur, ergänzt um `last_rx/ry/lt/rt`, plus upstreams Änderungserkennung. |
+| `simpsons/src/simpsons_app.h` | Doppelter PR-#43-Teil | Upstream, plus unsere Menü-Verdrahtung (`class ImGuiDrawer`, `InitCharacterMenu`, `ShutdownCharacterMenu`, `OnCreateDialogs`). |
+| `simpsons/src/freecam.cpp` | Upstream-Umbau auf `guest_memory.h`. Wir: Teleport (F9), Pad-Hook fürs Charaktermenü, Ticks für Charaktere und Hinweise. | Mit Basis `bfa25a93` läuft es sauber durch: upstream plus unsere drei Ergänzungen. |
+| `physics_step.cpp`, `frame_pacing.cpp`, `ink_outlines.cpp`, `eye_shading.cpp`, `ring_wait.cpp` | Upstream-Umbau, der Fork hat sie nach PR #43 nicht geändert | Upstream (siehe Abschnitt 1) |
+| SDK `audio_system.cpp`, `sdl_audio_driver.cpp`, `xboxkrnl_threading.cpp`, `windowed_app_main_win.cpp` | Doppelter PR-#43-Teil, Timer-Auflösung jetzt in `threading_win.cpp` (inkl. Power-Throttling-Opt-out) | Upstream. Unser Fallback auf den Dummy-Treiber ohne Audiogerät (`41e53e79`) wird sauber mitgemergt. |
+
+### 3.3 Prüfungen am gemergten Stand
+
+- **Doppelte Hooks:** Alle 30 `REX_FUNC(sub_…)` in `simpsons/src` kommen nur einmal vor,
+  also kein Linkfehler. Auch `REXCVAR`- und `RegisterBind`-Namen haben keine Duplikate.
+- **Syntax:** `clang++ -fsyntax-only` (C++23) über alle `simpsons/src/*.cpp`,
+  `input_system.cpp` und die Audio-Dateien ergab 0 Fehler. `xma_context.cpp` ließ sich
+  mangels generiertem `avconfig.h` nicht prüfen und wurde von Hand durchgesehen. Ein
+  vollständiger Build wurde nicht versucht.
+- **Byte-identisch mit upstream:** `physics_step`, `tick_count`, `frame_pacing`,
+  `ink_outlines`, `eye_shading`, `ring_wait`, `clock.cpp`, `timer_queue.cpp`. Upstreams
+  Timing gilt also vollständig.
+- **Fork-Funktionen nach PR #43, alle erhalten:**
+  - XMA-Stream-Reset (`772d5825`, `fe76ed4b`)
+  - Spielen ohne Audiogerät (`41e53e79`)
+  - Charakter-Auswahl mit ImGui-Menü
+  - Co-op in Springfield und den Challenges (`98f0d023`)
+  - Start-Episode mit Fortschritt (`8da8827f`)
+  - Hinweistexte (`17a0047d`)
+  - Freecam-Teleport (`f0b2c146`)
+  - klappbare Launcher-Einstellungen (`344999e5`)
+  - README-Ergänzungen
+
+  `character_select.cpp`, `hint_text.cpp` und `teleport.cpp` hat upstream nie
+  besessen, sie bleiben unverändert.
+- **Laufzeitrisiko** (nicht prüfbar ohne Spiel): Teleport, Charakterwechsel und
+  Hinweis-Anzeige laufen danach mit upstreams neuem Timing. Nach dem Abgleich bei 60
+  und, falls genutzt, über 60 FPS einmal durchprobieren.
+
+### 3.4 Aufräumen danach (optional)
+
+- **Helfer auf `guest_memory.h` umstellen.** Sie liegen im anonymen Namespace, es gibt
+  also kein ODR-Risiko, aber doppelten Code:
+  - `teleport.cpp`: `Host/LoadBE32/LoadBEFloat/StoreBEFloat`
+  - `character_select.cpp`: `Host/LoadBE32/StoreBE32`
+  - `hint_text.cpp`: `LoadBE32`
+  - `freecam.cpp`: 16-Bit-Varianten; dafür `LoadGuestU16/StoreGuestU16` in
+    `guest_memory.h` ergänzen.
+- **README „This fork“:** die Fixes, die jetzt upstream sind, als „in upstream
+  übernommen“ kennzeichnen.
+
+---
+
+## 4. Empfehlungen auf einen Blick
+
+| Was | Empfehlung |
+|---|---|
+| Physik/Timing aus upstream | **Übernehmen** (identisch bei 30/60 FPS, dazu >60 FPS, schlafender Limiter, `present_late_frames_immediately`, verlustfreie Gastuhr) |
+| `tick_count.cpp`, `physics_step = steady` | **Behalten** (bei upstream ohnehin identisch bzw. Standard) |
+| Fork-Funktionen (Co-op, Charaktere, Hinweise, Teleport, Start-Episode, klappbare Einstellungen, XMA-Fixes, ohne Audiogerät) | **Behalten**, Merge erhält sie |
+| Merge-Weg | erst `git merge -s ours 3b7773b1`, dann `git merge upstream/main` (5 Konflikte statt 16) |
+| `steady` mit H immer 0 | Optional, nur wenn Messung E häufige 25-ms-Schritte zeigt |
+| D3D11 | Nur experimentell testen. Für 4K/×3 eher Vulkan als Alternative zu D3D12 prüfen. |
+| Messen | Plan 1.8 (A–H): `physics_log`, Tree Hugger, Sägewerk |
